@@ -1,0 +1,13 @@
+"""Structured error codes for the Godot MCP Studio protocol."""
+
+from enum import StrEnum
+
+
+class ErrorCode(StrEnum):
+    SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
+    COMMAND_TIMEOUT = "COMMAND_TIMEOUT"
+    EDITOR_NOT_READY = "EDITOR_NOT_READY"
+    INVALID_PARAMS = "INVALID_PARAMS"
+    PLUGIN_DISCONNECTED = "PLUGIN_DISCONNECTED"
+    UNKNOWN_COMMAND = "UNKNOWN_COMMAND"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
