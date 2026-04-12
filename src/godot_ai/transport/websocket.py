@@ -10,8 +10,8 @@ from typing import Any
 import websockets
 from websockets.asyncio.server import ServerConnection
 
-from godot_mcp_studio.protocol.envelope import CommandRequest, CommandResponse, HandshakeMessage
-from godot_mcp_studio.sessions.registry import Session, SessionRegistry
+from godot_ai.protocol.envelope import CommandRequest, CommandResponse, HandshakeMessage
+from godot_ai.sessions.registry import Session, SessionRegistry
 
 logger = logging.getLogger(__name__)
 

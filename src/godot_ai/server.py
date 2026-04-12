@@ -1,4 +1,4 @@
-"""FastMCP server — the main entry point for Godot MCP Studio."""
+"""FastMCP server — the main entry point for Godot AI."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ from dataclasses import dataclass
 
 from fastmcp import FastMCP
 
-from godot_mcp_studio.godot_client.client import GodotClient
-from godot_mcp_studio.resources.sessions import register_session_resources
-from godot_mcp_studio.sessions.registry import SessionRegistry
-from godot_mcp_studio.tools.client import register_client_tools
-from godot_mcp_studio.tools.editor import register_editor_tools
-from godot_mcp_studio.tools.node import register_node_tools
-from godot_mcp_studio.tools.scene import register_scene_tools
-from godot_mcp_studio.tools.session import register_session_tools
-from godot_mcp_studio.transport.websocket import GodotWebSocketServer
+from godot_ai.godot_client.client import GodotClient
+from godot_ai.resources.sessions import register_session_resources
+from godot_ai.sessions.registry import SessionRegistry
+from godot_ai.tools.client import register_client_tools
+from godot_ai.tools.editor import register_editor_tools
+from godot_ai.tools.node import register_node_tools
+from godot_ai.tools.scene import register_scene_tools
+from godot_ai.tools.session import register_session_tools
+from godot_ai.transport.websocket import GodotWebSocketServer
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def create_server(ws_port: int = 9500) -> FastMCP:
                 pass
 
     mcp = FastMCP(
-        "Godot MCP Studio",
+        "Godot AI",
         instructions="Production-grade Godot MCP server with persistent editor integration. "
         "Use session tools to manage connections to Godot editor instances.",
         lifespan=_lifespan,

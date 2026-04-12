@@ -2,7 +2,7 @@
 
 import json
 
-from godot_mcp_studio.protocol.envelope import (
+from godot_ai.protocol.envelope import (
     CommandRequest,
     CommandResponse,
     ErrorDetail,

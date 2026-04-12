@@ -1,4 +1,4 @@
-# Godot MCP Studio
+# Godot AI
 
 Production-grade MCP server for Godot with persistent editor integration.
 
@@ -27,19 +27,19 @@ The Godot plugin starts a shared Python server. MCP clients connect via HTTP. Th
 
 ```bash
 # With uv (recommended)
-uv tool install /path/to/godot-mcp-studio
+uv tool install /path/to/godot-ai
 
 # Or with pip
-pip install -e /path/to/godot-mcp-studio
+pip install -e /path/to/godot-ai
 ```
 
 ### 2. Install the plugin
 
-Copy `plugin/addons/godot_mcp_studio/` into your Godot project's `addons/` folder.
+Copy `plugin/addons/godot_ai/` into your Godot project's `addons/` folder.
 
 ### 3. Enable the plugin
 
-In Godot: **Project > Project Settings > Plugins** — enable "Godot MCP Studio".
+In Godot: **Project > Project Settings > Plugins** — enable "Godot AI".
 
 The plugin will:
 - Start the MCP server automatically
@@ -52,14 +52,14 @@ The plugin auto-configures supported clients on first enable. If you need to con
 
 **Claude Code:**
 ```bash
-claude mcp add --scope user --transport http godot-mcp-studio http://127.0.0.1:8000/mcp
+claude mcp add --scope user --transport http godot-ai http://127.0.0.1:8000/mcp
 ```
 
 **Antigravity** (`~/.gemini/antigravity/mcp_config.json`):
 ```json
 {
   "mcpServers": {
-    "godot-mcp-studio": {
+    "godot-ai": {
       "serverUrl": "http://127.0.0.1:8000/mcp",
       "disabled": false
     }
@@ -107,7 +107,7 @@ pytest -v
 ruff check src/ tests/
 
 # Start server manually (for testing without the plugin)
-python -m godot_mcp_studio --transport streamable-http --port 8000
+python -m godot_ai --transport streamable-http --port 8000
 ```
 
 ## License

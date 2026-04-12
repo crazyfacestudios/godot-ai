@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from godot_mcp_studio.protocol.errors import ErrorCode
-from godot_mcp_studio.sessions.registry import SessionRegistry
-from godot_mcp_studio.transport.websocket import GodotWebSocketServer
+from godot_ai.protocol.errors import ErrorCode
+from godot_ai.sessions.registry import SessionRegistry
+from godot_ai.transport.websocket import GodotWebSocketServer
 
 
 class GodotCommandError(Exception):

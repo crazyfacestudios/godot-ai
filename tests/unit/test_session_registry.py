@@ -2,7 +2,7 @@
 
 import pytest
 
-from godot_mcp_studio.sessions.registry import Session, SessionRegistry
+from godot_ai.sessions.registry import Session, SessionRegistry
 
 
 def _make_session(session_id: str = "test-001", **overrides) -> Session:

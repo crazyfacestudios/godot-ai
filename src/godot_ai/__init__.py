@@ -1,4 +1,4 @@
-"""Godot MCP Studio — production-grade Godot MCP server."""
+"""Godot AI — production-grade Godot MCP server."""
 
 import argparse
 
@@ -6,7 +6,7 @@ __version__ = "0.0.1"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Godot MCP Studio server")
+    parser = argparse.ArgumentParser(description="Godot AI server")
     parser.add_argument(
         "--transport",
         choices=["stdio", "sse", "streamable-http"],
@@ -21,7 +21,7 @@ def main():
     )
     args = parser.parse_args()
 
-    from godot_mcp_studio.server import create_server
+    from godot_ai.server import create_server
 
     server = create_server(ws_port=args.ws_port)
 

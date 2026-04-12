@@ -8,7 +8,7 @@ extends RefCounted
 enum ClientType { CLAUDE_CODE, ANTIGRAVITY }
 enum ConfigStatus { NOT_CONFIGURED, CONFIGURED, ERROR }
 
-const SERVER_NAME := "godot-mcp-studio"
+const SERVER_NAME := "godot-ai"
 const SERVER_WS_PORT := 9500
 const SERVER_HTTP_PORT := 8000
 const SERVER_HTTP_URL := "http://127.0.0.1:%d/mcp" % SERVER_HTTP_PORT
@@ -59,15 +59,15 @@ static func client_type_from_string(name: String) -> int:
 static func get_server_command() -> Array[String]:
 	var home := OS.get_environment("HOME")
 	for bin_path in [
-		home.path_join(".local/bin/godot-mcp-studio"),
-		"/usr/local/bin/godot-mcp-studio",
-		"/opt/homebrew/bin/godot-mcp-studio",
+		home.path_join(".local/bin/godot-ai"),
+		"/usr/local/bin/godot-ai",
+		"/opt/homebrew/bin/godot-ai",
 	]:
 		if FileAccess.file_exists(bin_path):
 			return [bin_path]
 
 	var output: Array = []
-	var exit_code := OS.execute("which", ["godot-mcp-studio"], output, true)
+	var exit_code := OS.execute("which", ["godot-ai"], output, true)
 	if exit_code == 0 and output.size() > 0:
 		var cmd_path: String = output[0].strip_edges()
 		if not cmd_path.is_empty():
@@ -75,9 +75,9 @@ static func get_server_command() -> Array[String]:
 
 	var venv_python := _find_venv_python()
 	if not venv_python.is_empty():
-		return [venv_python, "-m", "godot_mcp_studio"]
+		return [venv_python, "-m", "godot_ai"]
 
-	return ["python3", "-m", "godot_mcp_studio"]
+	return ["python3", "-m", "godot_ai"]
 
 
 static func _find_venv_python() -> String:
