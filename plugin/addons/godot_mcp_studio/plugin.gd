@@ -1,19 +1,38 @@
 @tool
 extends EditorPlugin
 
-const CONNECTION = preload("res://addons/godot_mcp_studio/connection.gd")
-const CONFIGURATOR = preload("res://addons/godot_mcp_studio/client_configurator.gd")
-
 var _connection: Connection
+var _dispatcher: McpDispatcher
+var _log_buffer: McpLogBuffer
 var _server_pid := -1
 
 
 func _enter_tree() -> void:
 	_start_server()
-	_connection = CONNECTION.new()
+
+	_log_buffer = McpLogBuffer.new()
+	_dispatcher = McpDispatcher.new(_log_buffer)
+
+	# Register handlers
+	var editor_handler := EditorHandler.new(_log_buffer)
+	var scene_handler := SceneHandler.new()
+	var node_handler := NodeHandler.new()
+	var client_handler := ClientHandler.new()
+
+	_dispatcher.register("get_editor_state", editor_handler.get_editor_state)
+	_dispatcher.register("get_scene_tree", scene_handler.get_scene_tree)
+	_dispatcher.register("get_selection", editor_handler.get_selection)
+	_dispatcher.register("create_node", node_handler.create_node)
+	_dispatcher.register("get_logs", editor_handler.get_logs)
+	_dispatcher.register("configure_client", client_handler.configure_client)
+	_dispatcher.register("check_client_status", client_handler.check_client_status)
+
+	_connection = Connection.new()
+	_connection.log_buffer = _log_buffer
+	_connection.dispatcher = _dispatcher
 	add_child(_connection)
-	print("MCP | plugin loaded")
-	_auto_configure_clients.call_deferred()
+
+	_log_buffer.log("plugin loaded")
 
 
 func _exit_tree() -> void:
@@ -54,23 +73,3 @@ func _stop_server() -> void:
 		OS.kill(_server_pid)
 		print("MCP | stopped server (PID %d)" % _server_pid)
 		_server_pid = -1
-
-
-func _auto_configure_clients() -> void:
-	for client_type in [
-		McpClientConfigurator.ClientType.CLAUDE_CODE,
-		McpClientConfigurator.ClientType.ANTIGRAVITY,
-	]:
-		var display_name: String = McpClientConfigurator.ClientType.keys()[client_type]
-
-		var status := McpClientConfigurator.check_status(client_type)
-		if status == McpClientConfigurator.ConfigStatus.CONFIGURED:
-			print("MCP | %s: already configured" % display_name)
-			continue
-
-		print("MCP | %s: not configured, setting up..." % display_name)
-		var result := McpClientConfigurator.configure(client_type)
-		if result.get("status") == "ok":
-			print("MCP | %s: %s" % [display_name, result.get("message", "configured")])
-		else:
-			print("MCP | %s: setup failed - %s" % [display_name, result.get("message", "unknown error")])
