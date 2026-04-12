@@ -9,6 +9,7 @@ enum ClientType { CLAUDE_CODE, ANTIGRAVITY }
 enum ConfigStatus { NOT_CONFIGURED, CONFIGURED, ERROR }
 
 const SERVER_NAME := "godot-mcp-studio"
+const SERVER_HTTP_URL := "http://127.0.0.1:8000/mcp"
 
 
 ## Configure a specific client. Always writes the current correct command,
@@ -44,24 +45,33 @@ static func remove(client: ClientType) -> Dictionary:
 
 # --- Server command discovery ---
 
-## Get the Python command that launches the server.
-## Checks: installed binary → venv python → system python.
+## Get the absolute path to the server command.
+## Checks: well-known install locations → which → venv python → system python.
 static func _get_server_command() -> Array[String]:
-	var output: Array = []
+	# 1. Check well-known install paths directly (works even in sandboxed apps)
+	var home := OS.get_environment("HOME")
+	for bin_path in [
+		home.path_join(".local/bin/godot-mcp-studio"),
+		"/usr/local/bin/godot-mcp-studio",
+		"/opt/homebrew/bin/godot-mcp-studio",
+	]:
+		if FileAccess.file_exists(bin_path):
+			return [bin_path]
 
-	# 1. Check if godot-mcp-studio is available as a system command
+	# 2. Try which (may not work in sandboxed environments)
+	var output: Array = []
 	var exit_code := OS.execute("which", ["godot-mcp-studio"], output, true)
 	if exit_code == 0 and output.size() > 0:
 		var cmd_path: String = output[0].strip_edges()
 		if not cmd_path.is_empty():
 			return [cmd_path]
 
-	# 2. Look for a .venv relative to the Godot project or repo root
+	# 3. Look for a .venv relative to the Godot project or repo root
 	var venv_python := _find_venv_python()
 	if not venv_python.is_empty():
 		return [venv_python, "-m", "godot_mcp_studio"]
 
-	# 3. Fall back to system python
+	# 4. Fall back to system python (least likely to work)
 	return ["python3", "-m", "godot_mcp_studio"]
 
 
@@ -89,19 +99,17 @@ static func _get_expected_command_str() -> String:
 # --- Claude Code ---
 
 static func _configure_claude_code() -> Dictionary:
-	var cmd_parts := _get_server_command()
-
 	# Remove existing first to ensure clean state
 	OS.execute("claude", ["mcp", "remove", SERVER_NAME], [], true)
 
-	var args: Array[String] = ["mcp", "add", "--scope", "user", "--transport", "stdio", SERVER_NAME, "--"]
-	args.append_array(cmd_parts)
+	# Register with HTTP transport pointing at the shared server
+	var args: Array[String] = ["mcp", "add", "--scope", "user", "--transport", "http", SERVER_NAME, SERVER_HTTP_URL]
 
 	var output: Array = []
 	var exit_code := OS.execute("claude", args, output, true)
 
 	if exit_code == 0:
-		return {"status": "ok", "message": "Claude Code configured: %s" % " ".join(cmd_parts)}
+		return {"status": "ok", "message": "Claude Code configured (HTTP: %s)" % SERVER_HTTP_URL}
 	var err_msg: String = output[0].strip_edges() if output.size() > 0 else "Unknown error"
 	return {"status": "error", "message": "Failed to configure Claude Code: %s" % err_msg}
 
@@ -116,10 +124,8 @@ static func _check_claude_code() -> ConfigStatus:
 	if output_text.find(SERVER_NAME) < 0:
 		return ConfigStatus.NOT_CONFIGURED
 
-	# Verify the command is correct (check for venv path)
-	var expected_cmd := _get_server_command()
-	if expected_cmd[0].find(".venv") >= 0 and output_text.find(".venv") < 0:
-		# Configured but with wrong python — needs reconfiguration
+	# Verify it's configured for HTTP, not stdio
+	if output_text.find(SERVER_HTTP_URL) < 0 and output_text.find("http") < 0:
 		return ConfigStatus.NOT_CONFIGURED
 
 	return ConfigStatus.CONFIGURED
@@ -142,25 +148,21 @@ static func _get_antigravity_config_path() -> String:
 
 static func _configure_antigravity() -> Dictionary:
 	var config_path := _get_antigravity_config_path()
-	var cmd_parts := _get_server_command()
-
-	var server_entry := {}
-	if cmd_parts.size() == 1:
-		server_entry = {"command": cmd_parts[0], "args": [], "disabled": false}
-	else:
-		server_entry = {"command": cmd_parts[0], "args": cmd_parts.slice(1), "disabled": false}
+	var server_entry := {"serverUrl": SERVER_HTTP_URL, "disabled": false}
 
 	# Read existing config or start fresh
 	var config := {"mcpServers": {}}
 	if FileAccess.file_exists(config_path):
 		var file := FileAccess.open(config_path, FileAccess.READ)
 		if file:
-			var parsed = JSON.parse_string(file.get_as_text())
+			var content := file.get_as_text()
 			file.close()
-			if parsed is Dictionary:
-				config = parsed
-				if not config.has("mcpServers"):
-					config["mcpServers"] = {}
+			if not content.is_empty():
+				var json := JSON.new()
+				if json.parse(content) == OK and json.data is Dictionary:
+					config = json.data
+					if not config.has("mcpServers"):
+						config["mcpServers"] = {}
 
 	config["mcpServers"][SERVER_NAME] = server_entry
 
@@ -174,7 +176,7 @@ static func _configure_antigravity() -> Dictionary:
 	file.store_string(JSON.stringify(config, "\t"))
 	file.close()
 
-	return {"status": "ok", "message": "Antigravity configured: %s" % " ".join(cmd_parts)}
+	return {"status": "ok", "message": "Antigravity configured (HTTP: %s)" % SERVER_HTTP_URL}
 
 
 static func _check_antigravity() -> ConfigStatus:
@@ -185,8 +187,18 @@ static func _check_antigravity() -> ConfigStatus:
 	var file := FileAccess.open(config_path, FileAccess.READ)
 	if file == null:
 		return ConfigStatus.NOT_CONFIGURED
-	var parsed = JSON.parse_string(file.get_as_text())
+	var content := file.get_as_text()
 	file.close()
+
+	if content.is_empty():
+		return ConfigStatus.NOT_CONFIGURED
+
+	var json := JSON.new()
+	var err := json.parse(content)
+	if err != OK:
+		push_warning("MCP | Antigravity config parse error: %s (at line %d)" % [json.get_error_message(), json.get_error_line()])
+		return ConfigStatus.NOT_CONFIGURED
+	var parsed = json.data
 
 	if not (parsed is Dictionary):
 		return ConfigStatus.NOT_CONFIGURED
@@ -195,11 +207,10 @@ static func _check_antigravity() -> ConfigStatus:
 	if not servers.has(SERVER_NAME):
 		return ConfigStatus.NOT_CONFIGURED
 
-	# Verify command is the correct python
+	# Verify it's configured for HTTP
 	var entry: Dictionary = servers[SERVER_NAME]
-	var expected_cmd := _get_server_command()
-	var configured_cmd: String = entry.get("command", "")
-	if expected_cmd[0] != configured_cmd:
+	var configured_url: String = entry.get("serverUrl", "")
+	if configured_url != SERVER_HTTP_URL:
 		return ConfigStatus.NOT_CONFIGURED
 
 	return ConfigStatus.CONFIGURED

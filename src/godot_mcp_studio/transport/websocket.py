@@ -29,8 +29,20 @@ class GodotWebSocketServer:
 
     async def start(self):
         logger.info("Starting WebSocket server on port %d", self.port)
-        async with websockets.serve(self._handle_connection, "127.0.0.1", self.port):
-            await asyncio.Future()  # run forever
+        try:
+            async with websockets.serve(self._handle_connection, "127.0.0.1", self.port):
+                await asyncio.Future()  # run forever
+        except OSError as e:
+            if e.errno == 48:  # Address already in use
+                logger.warning(
+                    "WebSocket port %d already in use — another server instance may be running. "
+                    "MCP tools will work via stdio but the Godot plugin won't connect to this instance.",
+                    self.port,
+                )
+                # Keep running without WebSocket — stdio transport still works
+                await asyncio.Future()
+            else:
+                raise
 
     async def _handle_connection(self, ws: ServerConnection):
         session_id: str | None = None

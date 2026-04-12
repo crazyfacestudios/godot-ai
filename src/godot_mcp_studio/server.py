@@ -49,7 +49,7 @@ def create_server(ws_port: int = 9500) -> FastMCP:
             ws_task.cancel()
             try:
                 await ws_task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, OSError):
                 pass
 
     mcp = FastMCP(
