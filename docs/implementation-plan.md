@@ -196,78 +196,55 @@ The goal is to prove the full vertical: AI client → MCP server → WebSocket �
 
 The weekend sprint proved the vertical slice works. Before adding tools, fix the structural issues identified in review.
 
-### 3.1 Refactor plugin to planned architecture
+### 3.1 Refactor plugin to planned architecture — DONE
 
-`connection.gd` is a god-object (transport, dispatch, logging, path helpers, all handlers). Split into the architecture the plan already describes:
+Split `connection.gd` god-object into:
 
 ```text
-addons/godot_mcp_studio/
-├── plugin.gd              # EditorPlugin lifecycle, owns everything
+addons/godot_ai/
+├── plugin.gd              # EditorPlugin lifecycle, wires handlers
 ├── connection.gd          # WebSocket only: connect, reconnect, send, receive
 ├── dispatcher.gd          # Command queue, frame-budget dispatch, handler routing
+├── mcp_dock.gd            # Editor dock panel
 ├── handlers/
 │   ├── editor_handler.gd  # editor_state, selection, logs
-│   ├── scene_handler.gd   # scene tree, node find/get
-│   ├── node_handler.gd    # node create/delete/modify
+│   ├── scene_handler.gd   # scene tree reading
+│   ├── node_handler.gd    # node create (with undo)
 │   └── client_handler.gd  # client configure/status
-├── state/
-│   └── log_buffer.gd      # Ring buffer for log capture
 └── utils/
-    ├── scene_path.gd       # _scene_path(), _resolve_scene_node()
+    ├── scene_path.gd       # from_node(), resolve()
+    ├── error_codes.gd      # shared error constants + make()
+    ├── log_buffer.gd       # ring buffer for log capture
     └── client_configurator.gd  # Client config (Claude Code, Antigravity)
 ```
 
-**Why now:** Every new handler added to connection.gd makes this refactor harder. Do it with 7 tools, not 30.
+### 3.2 Make client configuration opt-in — DONE
 
-### 3.2 Make client configuration opt-in
+- Removed `_auto_configure_clients()` from `_enter_tree()`
+- Client config is now in the dock panel: detected status + "Configure" button per client
+- MCP tools `client_configure` / `client_status` still available for AI clients
 
-The current plugin silently rewrites user-scope Claude Code config and Antigravity config on enable. This is a trust problem.
+### 3.3 Add undo integration for write tools — DONE
 
-**Fix:**
-- Remove `_auto_configure_clients()` from `_enter_tree()`
-- Move client config to the dock panel: show detected status per client + explicit "Configure" button
-- The MCP tools `client_configure` / `client_status` stay (useful for AI clients), but don't auto-fire
-- Show the exact command/config change before applying (preview, not surprise)
+`node_create` uses `EditorUndoRedoManager`. All future write tools must follow this pattern. Response includes `"undoable": true`.
 
-### 3.3 Add undo integration for write tools
+### 3.4 Fix session state freshness — DONE
 
-`node_create` currently calls `add_child` directly. Add `EditorUndoRedoManager` integration:
+Plugin polls for scene and play state changes each frame, sends events over WebSocket. Server updates session registry on receipt. `session_list` returns live data.
 
-```gdscript
-var undo_redo = get_undo_redo()
-undo_redo.create_action("MCP: Create Node")
-undo_redo.add_do_method(self, "_do_create_node", ...)
-undo_redo.add_undo_method(self, "_undo_create_node", ...)
-undo_redo.commit_action()
-```
+### 3.5 Build the dock panel — DONE
 
-All write tools must use this pattern. Undo support is a prerequisite for adding more write tools (`node.delete`, `node.set_property`, etc.).
+Editor dock panel with:
+- Connection status (green/red + port info)
+- Reconnect + Reload Plugin buttons
+- Client config (per-client status + Configure buttons)
+- MCP log (scrolling RichTextLabel with toggle to hide)
 
-### 3.4 Fix session state freshness
+### 3.6 Symlink test_project plugin — DONE
 
-`current_scene` and `play_state` in the session registry are stale handshake-only data. Add event push from plugin:
+`test_project/addons/godot_ai` → `plugin/addons/godot_ai`
 
-- Plugin hooks editor signals: scene change, play/stop
-- Sends update events over WebSocket: `{"type": "event", "event": "scene_changed", "data": {...}}`
-- Server updates session registry on event receipt
-- `session_list` and `editor_state` then return live data
-
-### 3.5 Build the dock panel (minimal)
-
-Minimum viable dock panel (`mcp_dock.gd`):
-
-- Connection status: green/red + session ID
-- Server info: resolved command, WS/HTTP ports
-- Client config: detected status per client + "Configure" button (opt-in)
-- MCP log: scrolling `RichTextLabel` fed from log buffer
-- Controls: reconnect button, `mcp_logging` toggle
-- Diagnostics: ping, session count
-
-### 3.6 Symlink test_project plugin
-
-Stop copying files. Symlink `test_project/addons/godot_mcp_studio` → `plugin/addons/godot_mcp_studio` so changes are instantly reflected.
-
-### 3.7 Add integration tests
+### 3.7 Add integration tests — TODO
 
 - Mock WebSocket client that connects, handshakes, receives commands, sends responses
 - Contract test: handshake sequence, error responses, timeout behavior
