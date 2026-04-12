@@ -22,14 +22,10 @@ def register_node_tools(mcp: FastMCP) -> None:
         Args:
             type: The Godot node class (e.g. "Node3D", "MeshInstance3D", "Camera3D").
             name: Optional name for the node.
-            parent_path: Node path of the parent (e.g. "/root/Main"). Empty = scene root.
+            parent_path: Node path of the parent (e.g. "/Main"). Empty = scene root.
         """
         app = ctx.lifespan_context
-        response = await app.client.send(
+        return await app.client.send(
             "create_node",
             {"type": type, "name": name, "parent_path": parent_path},
         )
-        if response.status == "error":
-            error_msg = response.error.message if response.error else "Unknown error"
-            return {"status": "error", "message": error_msg}
-        return response.data

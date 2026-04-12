@@ -17,5 +17,4 @@ def register_scene_tools(mcp: FastMCP) -> None:
             depth: Maximum depth to walk. Default 10.
         """
         app = ctx.lifespan_context
-        response = await app.client.send("get_scene_tree", {"depth": depth})
-        return response.data
+        return await app.client.send("get_scene_tree", {"depth": depth})

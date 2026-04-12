@@ -14,8 +14,7 @@ def register_editor_tools(mcp: FastMCP) -> None:
         and whether the project is currently playing.
         """
         app = ctx.lifespan_context
-        response = await app.client.send("get_editor_state")
-        return response.data
+        return await app.client.send("get_editor_state")
 
     @mcp.tool()
     async def editor_selection_get(ctx: Context) -> dict:
@@ -24,5 +23,17 @@ def register_editor_tools(mcp: FastMCP) -> None:
         Returns a list of selected node paths.
         """
         app = ctx.lifespan_context
-        response = await app.client.send("get_selection")
-        return response.data
+        return await app.client.send("get_selection")
+
+    @mcp.tool()
+    async def logs_read(ctx: Context, count: int = 50) -> dict:
+        """Read recent log lines from the Godot editor console.
+
+        Returns the most recent log lines captured by the MCP plugin,
+        including MCP command traffic when logging is enabled.
+
+        Args:
+            count: Number of recent lines to return. Default 50.
+        """
+        app = ctx.lifespan_context
+        return await app.client.send("get_logs", {"count": count})

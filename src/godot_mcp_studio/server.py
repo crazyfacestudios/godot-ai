@@ -29,34 +29,33 @@ class AppContext:
     client: GodotClient
 
 
-@asynccontextmanager
-async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
-    registry = SessionRegistry()
-    ws_server = GodotWebSocketServer(registry)
-    client = GodotClient(ws_server, registry)
-
-    # Start WebSocket server in background
-    ws_task = asyncio.create_task(ws_server.start())
-    logger.info("WebSocket server starting on port %d", ws_server.port)
-
-    try:
-        yield AppContext(registry=registry, ws_server=ws_server, client=client)
-    finally:
-        ws_task.cancel()
-        try:
-            await ws_task
-        except asyncio.CancelledError:
-            pass
-
-
-def create_server() -> FastMCP:
+def create_server(ws_port: int = 9500) -> FastMCP:
     logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
+
+    # Capture ws_port in the lifespan closure
+    @asynccontextmanager
+    async def _lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
+        registry = SessionRegistry()
+        ws_server = GodotWebSocketServer(registry, port=ws_port)
+        client = GodotClient(ws_server, registry)
+
+        ws_task = asyncio.create_task(ws_server.start())
+        logger.info("WebSocket server starting on port %d", ws_server.port)
+
+        try:
+            yield AppContext(registry=registry, ws_server=ws_server, client=client)
+        finally:
+            ws_task.cancel()
+            try:
+                await ws_task
+            except asyncio.CancelledError:
+                pass
 
     mcp = FastMCP(
         "Godot MCP Studio",
         instructions="Production-grade Godot MCP server with persistent editor integration. "
         "Use session tools to manage connections to Godot editor instances.",
-        lifespan=lifespan,
+        lifespan=_lifespan,
     )
 
     register_session_tools(mcp)
