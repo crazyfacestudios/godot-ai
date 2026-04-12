@@ -1,8 +1,10 @@
 # Godot AI
 
-Production-grade MCP server for Godot with persistent editor integration.
+Production-grade MCP server and AI tools for the Godot engine.
 
 > **Status: Early development.** Core tools working, more coming.
+
+*This is an independent community project, not affiliated with or endorsed by the [Godot Foundation](https://godot.foundation). Godot Engine is a free and open-source project under the [MIT license](https://godotengine.org/license).*
 
 ## How it works
 

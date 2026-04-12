@@ -2,7 +2,13 @@
 class_name NodeHandler
 extends RefCounted
 
-## Handles node creation and manipulation.
+## Handles node creation and manipulation with undo/redo support.
+
+var _undo_redo: EditorUndoRedoManager
+
+
+func _init(undo_redo: EditorUndoRedoManager) -> void:
+	_undo_redo = undo_redo
 
 
 func create_node(params: Dictionary) -> Dictionary:
@@ -35,8 +41,12 @@ func create_node(params: Dictionary) -> Dictionary:
 	if not node_name.is_empty():
 		new_node.name = node_name
 
-	parent.add_child(new_node, true)
-	new_node.owner = scene_root
+	_undo_redo.create_action("MCP: Create %s" % new_node.name)
+	_undo_redo.add_do_method(parent, "add_child", new_node, true)
+	_undo_redo.add_do_method(new_node, "set_owner", scene_root)
+	_undo_redo.add_do_reference(new_node)
+	_undo_redo.add_undo_method(parent, "remove_child", new_node)
+	_undo_redo.commit_action()
 
 	return {
 		"data": {
@@ -44,5 +54,6 @@ func create_node(params: Dictionary) -> Dictionary:
 			"type": new_node.get_class(),
 			"path": ScenePath.from_node(new_node, scene_root),
 			"parent_path": ScenePath.from_node(parent, scene_root),
+			"undoable": true,
 		}
 	}

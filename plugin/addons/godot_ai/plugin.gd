@@ -16,7 +16,7 @@ func _enter_tree() -> void:
 
 	var editor_handler := EditorHandler.new(_log_buffer)
 	var scene_handler := SceneHandler.new()
-	var node_handler := NodeHandler.new()
+	var node_handler := NodeHandler.new(get_undo_redo())
 	var client_handler := ClientHandler.new()
 	_handlers = [editor_handler, scene_handler, node_handler, client_handler]
 
