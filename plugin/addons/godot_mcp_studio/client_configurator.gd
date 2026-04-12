@@ -11,7 +11,8 @@ enum ConfigStatus { NOT_CONFIGURED, CONFIGURED, ERROR }
 const SERVER_NAME := "godot-mcp-studio"
 
 
-## Configure a specific client. Returns a result dict with status and message.
+## Configure a specific client. Always writes the current correct command,
+## even if already configured (self-heals bad configs).
 static func configure(client: ClientType) -> Dictionary:
 	match client:
 		ClientType.CLAUDE_CODE:
@@ -21,7 +22,7 @@ static func configure(client: ClientType) -> Dictionary:
 	return {"status": "error", "message": "Unknown client type"}
 
 
-## Check if a client is already configured.
+## Check if a client is configured with the correct server command.
 static func check_status(client: ClientType) -> ConfigStatus:
 	match client:
 		ClientType.CLAUDE_CODE:
@@ -41,8 +42,10 @@ static func remove(client: ClientType) -> Dictionary:
 	return {"status": "error", "message": "Unknown client type"}
 
 
+# --- Server command discovery ---
+
 ## Get the Python command that launches the server.
-## Checks: installed command → venv python → system python.
+## Checks: installed binary → venv python → system python.
 static func _get_server_command() -> Array[String]:
 	var output: Array = []
 
@@ -66,7 +69,7 @@ static func _get_server_command() -> Array[String]:
 static func _find_venv_python() -> String:
 	var project_dir := ProjectSettings.globalize_path("res://")
 	var dir := project_dir
-	for i in 5:  # Walk up at most 5 levels
+	for i in 5:
 		var venv_path := dir.path_join(".venv/bin/python")
 		if FileAccess.file_exists(venv_path):
 			return venv_path
@@ -77,12 +80,20 @@ static func _find_venv_python() -> String:
 	return ""
 
 
+## Get the expected command string for comparison.
+static func _get_expected_command_str() -> String:
+	var parts := _get_server_command()
+	return " ".join(parts)
+
+
 # --- Claude Code ---
 
 static func _configure_claude_code() -> Dictionary:
 	var cmd_parts := _get_server_command()
 
-	# Use `claude mcp add` CLI to register
+	# Remove existing first to ensure clean state
+	OS.execute("claude", ["mcp", "remove", SERVER_NAME], [], true)
+
 	var args: Array[String] = ["mcp", "add", "--scope", "user", "--transport", "stdio", SERVER_NAME, "--"]
 	args.append_array(cmd_parts)
 
@@ -90,23 +101,28 @@ static func _configure_claude_code() -> Dictionary:
 	var exit_code := OS.execute("claude", args, output, true)
 
 	if exit_code == 0:
-		return {"status": "ok", "message": "Claude Code configured successfully"}
-	else:
-		var err_msg: String = output[0].strip_edges() if output.size() > 0 else "Unknown error"
-		return {"status": "error", "message": "Failed to configure Claude Code: %s" % err_msg}
+		return {"status": "ok", "message": "Claude Code configured: %s" % " ".join(cmd_parts)}
+	var err_msg: String = output[0].strip_edges() if output.size() > 0 else "Unknown error"
+	return {"status": "error", "message": "Failed to configure Claude Code: %s" % err_msg}
 
 
 static func _check_claude_code() -> ConfigStatus:
-	# Check if claude CLI is available and server is registered
 	var output: Array = []
 	var exit_code := OS.execute("claude", ["mcp", "list"], output, true)
 	if exit_code != 0:
 		return ConfigStatus.NOT_CONFIGURED
 
 	var output_text: String = output[0] if output.size() > 0 else ""
-	if output_text.find(SERVER_NAME) >= 0:
-		return ConfigStatus.CONFIGURED
-	return ConfigStatus.NOT_CONFIGURED
+	if output_text.find(SERVER_NAME) < 0:
+		return ConfigStatus.NOT_CONFIGURED
+
+	# Verify the command is correct (check for venv path)
+	var expected_cmd := _get_server_command()
+	if expected_cmd[0].find(".venv") >= 0 and output_text.find(".venv") < 0:
+		# Configured but with wrong python — needs reconfiguration
+		return ConfigStatus.NOT_CONFIGURED
+
+	return ConfigStatus.CONFIGURED
 
 
 static func _remove_claude_code() -> Dictionary:
@@ -128,12 +144,11 @@ static func _configure_antigravity() -> Dictionary:
 	var config_path := _get_antigravity_config_path()
 	var cmd_parts := _get_server_command()
 
-	# Build the server entry
 	var server_entry := {}
 	if cmd_parts.size() == 1:
-		server_entry = {"command": cmd_parts[0], "args": [], "type": "stdio"}
+		server_entry = {"command": cmd_parts[0], "args": [], "disabled": false}
 	else:
-		server_entry = {"command": cmd_parts[0], "args": cmd_parts.slice(1), "type": "stdio"}
+		server_entry = {"command": cmd_parts[0], "args": cmd_parts.slice(1), "disabled": false}
 
 	# Read existing config or start fresh
 	var config := {"mcpServers": {}}
@@ -149,19 +164,17 @@ static func _configure_antigravity() -> Dictionary:
 
 	config["mcpServers"][SERVER_NAME] = server_entry
 
-	# Ensure directory exists
 	var dir_path := config_path.get_base_dir()
 	if not DirAccess.dir_exists_absolute(dir_path):
 		DirAccess.make_dir_recursive_absolute(dir_path)
 
-	# Write config
 	var file := FileAccess.open(config_path, FileAccess.WRITE)
 	if file == null:
 		return {"status": "error", "message": "Cannot write to %s" % config_path}
 	file.store_string(JSON.stringify(config, "\t"))
 	file.close()
 
-	return {"status": "ok", "message": "Antigravity configured at %s" % config_path}
+	return {"status": "ok", "message": "Antigravity configured: %s" % " ".join(cmd_parts)}
 
 
 static func _check_antigravity() -> ConfigStatus:
@@ -172,15 +185,24 @@ static func _check_antigravity() -> ConfigStatus:
 	var file := FileAccess.open(config_path, FileAccess.READ)
 	if file == null:
 		return ConfigStatus.NOT_CONFIGURED
-
 	var parsed = JSON.parse_string(file.get_as_text())
 	file.close()
 
-	if parsed is Dictionary:
-		var servers: Dictionary = parsed.get("mcpServers", {})
-		if servers.has(SERVER_NAME):
-			return ConfigStatus.CONFIGURED
-	return ConfigStatus.NOT_CONFIGURED
+	if not (parsed is Dictionary):
+		return ConfigStatus.NOT_CONFIGURED
+
+	var servers: Dictionary = parsed.get("mcpServers", {})
+	if not servers.has(SERVER_NAME):
+		return ConfigStatus.NOT_CONFIGURED
+
+	# Verify command is the correct python
+	var entry: Dictionary = servers[SERVER_NAME]
+	var expected_cmd := _get_server_command()
+	var configured_cmd: String = entry.get("command", "")
+	if expected_cmd[0] != configured_cmd:
+		return ConfigStatus.NOT_CONFIGURED
+
+	return ConfigStatus.CONFIGURED
 
 
 static func _remove_antigravity() -> Dictionary:
