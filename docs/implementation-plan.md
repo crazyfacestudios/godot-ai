@@ -477,6 +477,34 @@ Ship the user install path before adding more features. Everything above is dev-
 - [ ] First-run UX: dock panel shows "Install uv" if missing, one-click install
 - [ ] Document install flow in README for each platform
 
+### CI pipeline (GitHub Actions)
+
+Run on every push and PR. Three-tier matrix:
+
+**Tier 1 — Python tests (fast, all platforms):**
+- Matrix: `{ubuntu-latest, macos-latest, windows-latest}` x `{python 3.11, 3.13}`
+- Steps: `pip install -e ".[dev]"` → `pytest -v` → `ruff check`
+- These are the 32 unit + integration tests (WebSocket mock, protocol, registry)
+- No Godot needed — runs in ~3 seconds
+
+**Tier 2 — Godot-side tests (headless, all platforms):**
+- Matrix: `{ubuntu-latest, macos-latest, windows-latest}` x `{godot 4.4+}`
+- Steps: install Godot headless → install server → start server → enable plugin → `run_tests` via MCP → assert 0 failures
+- These are the 35 handler tests running inside the actual editor
+- Requires headless Godot (`--headless` flag) + Xvfb on Linux
+
+**Tier 3 — User install flow (smoke test, all platforms):**
+- Matrix: `{ubuntu-latest, macos-latest, windows-latest}`
+- Steps: install uv → `uvx godot-ai --help` (verify package installs from PyPI) → start server → health check HTTP endpoint
+- No Godot needed — just verifies the server starts and responds
+- Runs on release tags only (not every push)
+
+**Setup tasks:**
+- [ ] Create `.github/workflows/ci.yml` with Tier 1 (Python tests)
+- [ ] Add Tier 2 with Godot headless (investigate `chickensoft-games/setup-godot` action)
+- [ ] Add Tier 3 for release smoke tests
+- [ ] Add status badges to README
+
 ---
 
 ## 6. Phase 2: Safe Write Path (Weeks 4-7)
