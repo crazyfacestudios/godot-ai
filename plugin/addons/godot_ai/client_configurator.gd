@@ -279,10 +279,10 @@ static func _write_antigravity_config(config: Dictionary) -> bool:
 
 
 static func _configure_antigravity() -> Dictionary:
-	var config: Dictionary = _read_antigravity_config()
-	if config == null:
+	var config = _read_antigravity_config()
+	if not (config is Dictionary):
 		config = {"mcpServers": {}}
-	if not config.has("mcpServers"):
+	if not config.has("mcpServers") or not (config["mcpServers"] is Dictionary):
 		config["mcpServers"] = {}
 
 	config["mcpServers"][SERVER_NAME] = {"serverUrl": SERVER_HTTP_URL, "disabled": false}
@@ -293,15 +293,19 @@ static func _configure_antigravity() -> Dictionary:
 
 
 static func _check_antigravity() -> ConfigStatus:
-	var config: Dictionary = _read_antigravity_config()
-	if config == null:
+	var config = _read_antigravity_config()
+	if not (config is Dictionary):
 		return ConfigStatus.NOT_CONFIGURED
 
-	var servers: Dictionary = config.get("mcpServers", {})
+	var servers = config.get("mcpServers", {})
+	if not (servers is Dictionary):
+		return ConfigStatus.NOT_CONFIGURED
 	if not servers.has(SERVER_NAME):
 		return ConfigStatus.NOT_CONFIGURED
 
-	var entry: Dictionary = servers[SERVER_NAME]
+	var entry = servers.get(SERVER_NAME)
+	if not (entry is Dictionary):
+		return ConfigStatus.NOT_CONFIGURED
 	if entry.get("serverUrl", "") != SERVER_HTTP_URL:
 		return ConfigStatus.NOT_CONFIGURED
 
@@ -309,11 +313,12 @@ static func _check_antigravity() -> ConfigStatus:
 
 
 static func _remove_antigravity() -> Dictionary:
-	var config: Dictionary = _read_antigravity_config()
-	if config == null:
+	var config = _read_antigravity_config()
+	if not (config is Dictionary):
 		return {"status": "ok", "message": "Not configured"}
 
-	if config.has("mcpServers"):
-		config["mcpServers"].erase(SERVER_NAME)
+	var servers = config.get("mcpServers")
+	if servers is Dictionary:
+		servers.erase(SERVER_NAME)
 		_write_antigravity_config(config)
 	return {"status": "ok", "message": "Antigravity configuration removed"}
