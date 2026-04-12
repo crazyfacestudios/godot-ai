@@ -28,14 +28,14 @@ AI Client → MCP (stdio/sse) → Python FastMCP server → WebSocket (port 9500
 
 ```bash
 cd ~/Documents/godot-ai
+script/setup-dev             # creates .venv, installs deps, applies macOS .pth fix
 source .venv/bin/activate
-pip install -e ".[dev]" && chflags -R nohidden .venv  # editable install + macOS fix
 pytest -v                    # run tests
 ruff check src/ tests/       # lint
 ruff format src/ tests/      # format
 ```
 
-**macOS + Python 3.13 quirk**: Files inside `.venv` inherit the macOS hidden flag (dot-prefix directory). Python 3.13 skips hidden `.pth` files, breaking editable installs. Always run `chflags -R nohidden .venv` after `pip install -e`. The `pythonpath` setting in `pyproject.toml` handles this for pytest, but the server needs the `.pth` fix.
+**macOS + Python 3.13 note**: Files inside `.venv` inherit the macOS hidden flag (dot-prefix directory). Python 3.13 skips hidden `.pth` files (CPython gh-113659), breaking editable installs. `script/setup-dev` generates a `sitecustomize.py` in the venv that adds `src/` to `sys.path` via normal import (unaffected by hidden flags). No manual `chflags` needed.
 
 ### Server lifecycle in dev
 

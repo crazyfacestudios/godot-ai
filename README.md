@@ -105,9 +105,8 @@ claude mcp add --scope user --transport http godot-ai http://127.0.0.1:8000/mcp
 ## Development
 
 ```bash
-# Setup
-pip install -e ".[dev]"
-chflags -R nohidden .venv   # macOS fix for Python 3.13
+# Setup (handles macOS Python 3.13 .pth fix automatically)
+script/setup-dev
 
 # Run Python tests (32 unit + integration)
 pytest -v
