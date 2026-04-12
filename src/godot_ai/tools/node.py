@@ -29,3 +29,64 @@ def register_node_tools(mcp: FastMCP) -> None:
             "create_node",
             {"type": type, "name": name, "parent_path": parent_path},
         )
+
+    @mcp.tool()
+    async def node_find(
+        ctx: Context,
+        name: str = "",
+        type: str = "",
+        group: str = "",
+    ) -> dict:
+        """Find nodes in the scene tree by name, type, or group.
+
+        At least one filter must be provided. Filters are combined with AND
+        logic — a node must match all specified filters.
+
+        Args:
+            name: Substring match on node name (case-insensitive).
+            type: Exact Godot class name (e.g. "MeshInstance3D").
+            group: Group name the node must belong to.
+        """
+        app = ctx.lifespan_context
+        return await app.client.send(
+            "find_nodes",
+            {"name": name, "type": type, "group": group},
+        )
+
+    @mcp.tool()
+    async def node_get_properties(ctx: Context, path: str) -> dict:
+        """Get all properties of a node.
+
+        Returns the property list with current values for the node at
+        the given scene path.
+
+        Args:
+            path: Scene path of the node (e.g. "/Main/Camera3D").
+        """
+        app = ctx.lifespan_context
+        return await app.client.send("get_node_properties", {"path": path})
+
+    @mcp.tool()
+    async def node_get_children(ctx: Context, path: str) -> dict:
+        """Get the direct children of a node.
+
+        Returns name, type, and path for each immediate child of the
+        specified node.
+
+        Args:
+            path: Scene path of the parent node (e.g. "/Main").
+        """
+        app = ctx.lifespan_context
+        return await app.client.send("get_children", {"path": path})
+
+    @mcp.tool()
+    async def node_get_groups(ctx: Context, path: str) -> dict:
+        """Get the groups a node belongs to.
+
+        Returns the list of group names for the node at the given path.
+
+        Args:
+            path: Scene path of the node (e.g. "/Main/Player").
+        """
+        app = ctx.lifespan_context
+        return await app.client.send("get_groups", {"path": path})

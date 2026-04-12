@@ -18,6 +18,7 @@ from godot_ai.tools.editor import register_editor_tools
 from godot_ai.tools.node import register_node_tools
 from godot_ai.tools.scene import register_scene_tools
 from godot_ai.tools.session import register_session_tools
+from godot_ai.tools.testing import register_testing_tools
 from godot_ai.transport.websocket import GodotWebSocketServer
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ def create_server(ws_port: int = 9500) -> FastMCP:
     register_scene_tools(mcp)
     register_node_tools(mcp)
     register_client_tools(mcp)
+    register_testing_tools(mcp)
     register_session_resources(mcp)
 
     return mcp

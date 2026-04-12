@@ -17,6 +17,9 @@ var _reconnect_btn: Button
 var _last_log_count := 0
 var _last_connected := false
 
+# Setup UI
+var _setup_container: VBoxContainer
+
 # Client config UI
 var _client_rows: Dictionary = {}  # client_name -> {status_label, button}
 
@@ -86,6 +89,16 @@ func _build_ui() -> void:
 	btn_row.add_child(reload_btn)
 
 	add_child(btn_row)
+
+	add_child(HSeparator.new())
+
+	# --- Setup section ---
+	var setup_header := _make_header("Setup")
+	add_child(setup_header)
+
+	_setup_container = VBoxContainer.new()
+	add_child(_setup_container)
+	_refresh_setup_status.call_deferred()
 
 	add_child(HSeparator.new())
 
@@ -196,6 +209,62 @@ func _on_log_toggled(enabled: bool) -> void:
 	if _connection and _connection.dispatcher:
 		_connection.dispatcher.mcp_logging = enabled
 	_log_display.visible = enabled
+
+
+func _refresh_setup_status() -> void:
+	# Clear previous indicators
+	for child in _setup_container.get_children():
+		child.queue_free()
+
+	var is_dev := McpClientConfigurator.is_dev_checkout()
+	if is_dev:
+		_setup_container.add_child(_make_status_row("Mode", "Dev (venv)", Color.CYAN))
+		return
+
+	# User mode — check for uv
+	var uv_version := McpClientConfigurator.check_uv_version()
+	if not uv_version.is_empty():
+		_setup_container.add_child(_make_status_row("uv", uv_version, Color.GREEN))
+		var ver := McpClientConfigurator.get_plugin_version()
+		_setup_container.add_child(_make_status_row("Server", "godot-ai ~= %s" % ver, Color.GREEN))
+	else:
+		_setup_container.add_child(_make_status_row("uv", "not found", Color.RED))
+		var install_btn := Button.new()
+		install_btn.text = "Install uv"
+		install_btn.pressed.connect(_on_install_uv)
+		_setup_container.add_child(install_btn)
+
+
+func _make_status_row(label_text: String, value_text: String, value_color: Color) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+
+	var label := Label.new()
+	label.text = label_text
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	label.custom_minimum_size.x = 50
+	row.add_child(label)
+
+	var value := Label.new()
+	value.text = value_text
+	value.add_theme_font_size_override("font_size", 11)
+	value.add_theme_color_override("font_color", value_color)
+	row.add_child(value)
+
+	return row
+
+
+func _on_install_uv() -> void:
+	var install_cmd: String
+	match OS.get_name():
+		"Windows":
+			install_cmd = "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\""
+		_:
+			install_cmd = "curl -LsSf https://astral.sh/uv/install.sh | sh"
+	OS.execute("bash", ["-c", install_cmd], [], false)
+	# Re-check after a moment
+	_refresh_setup_status.call_deferred()
 
 
 func _on_configure_client(client_name: String) -> void:

@@ -244,20 +244,20 @@ Editor dock panel with:
 
 `test_project/addons/godot_ai` → `plugin/addons/godot_ai`
 
-### 3.7 Add integration tests — TODO
+### 3.7 Add integration tests — DONE
 
 - Mock WebSocket client that connects, handshakes, receives commands, sends responses
 - Contract test: handshake sequence, error responses, timeout behavior
-- At least 25 passing tests before Phase 1
+- 32 passing tests (18 unit + 14 integration)
 
 ### Hardening exit criteria
-- [ ] connection.gd split into connection, dispatcher, handlers
-- [ ] Client config is opt-in (dock button, not auto-fire)
-- [ ] node_create uses EditorUndoRedoManager
-- [ ] Session state updates on scene switch and play/stop
-- [ ] Dock panel shows connection status and MCP log
-- [ ] test_project uses symlink to plugin/
-- [ ] 25+ passing tests including integration
+- [x] connection.gd split into connection, dispatcher, handlers
+- [x] Client config is opt-in (dock button, not auto-fire)
+- [x] node_create uses EditorUndoRedoManager
+- [x] Session state updates on scene switch and play/stop
+- [x] Dock panel shows connection status and MCP log
+- [x] test_project uses symlink to plugin/
+- [x] 25+ passing tests including integration
 
 ---
 
@@ -378,7 +378,7 @@ The product should be useful for inspection and navigation before any write tool
 
 ### Tool implementation order
 
-**Batch 1 — Session and editor (Week 2):**
+**Batch 1 — Session and editor — DONE:**
 | Tool | Plugin handler | Notes |
 |------|---------------|-------|
 | `session.list` | — | Server-side only, reads registry |
@@ -386,7 +386,7 @@ The product should be useful for inspection and navigation before any write tool
 | `editor.state` | `get_editor_state` | Already done in Phase 0 |
 | `editor.selection.get` | `get_selection` | `EditorInterface.get_selection().get_selected_nodes()` |
 
-**Batch 2 — Scene reads (Week 3):**
+**Batch 2 — Scene reads — DONE:**
 | Tool | Plugin handler | Notes |
 |------|---------------|-------|
 | `scene.get_hierarchy` | `get_scene_tree` | Already done in Phase 0; add pagination |
@@ -400,7 +400,7 @@ The product should be useful for inspection and navigation before any write tool
 | Tool | Plugin handler | Notes |
 |------|---------------|-------|
 | `project_settings.get` | `get_project_setting` | `ProjectSettings.get_setting()` |
-| `logs.read` | `get_logs` | Ring buffer in plugin, last N lines |
+| `logs.read` | `get_logs` | Ring buffer in plugin, last N lines — already done |
 | `filesystem.search` | `search_filesystem` | `EditorFileSystem` scan |
 
 **Batch 4 — MCP Resources (Week 4):**

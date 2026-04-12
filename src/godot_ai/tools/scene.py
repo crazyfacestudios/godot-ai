@@ -18,3 +18,13 @@ def register_scene_tools(mcp: FastMCP) -> None:
         """
         app = ctx.lifespan_context
         return await app.client.send("get_scene_tree", {"depth": depth})
+
+    @mcp.tool()
+    async def scene_get_roots(ctx: Context) -> dict:
+        """Get all scenes currently open in the Godot editor.
+
+        Returns a list of open scene file paths and which one is the
+        currently edited scene.
+        """
+        app = ctx.lifespan_context
+        return await app.client.send("get_open_scenes")

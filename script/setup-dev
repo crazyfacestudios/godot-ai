@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Dev environment setup — run once after cloning, or after recreating .venv.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if [ ! -d .venv ]; then
+    python3 -m venv .venv
+fi
+
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# macOS + Python 3.13: files inside .venv inherit the hidden flag,
+# which breaks .pth-based editable installs. sitecustomize.py uses
+# normal import (unaffected by hidden flag) to add src/ to sys.path.
+SITE_PACKAGES=$(.venv/bin/python -c "import site; print(site.getsitepackages()[0])")
+cat > "$SITE_PACKAGES/sitecustomize.py" << 'PYEOF'
+"""Editable install path fix for .venv on macOS + Python 3.13+.
+
+macOS sets the hidden flag on files inside dot-prefixed directories.
+Python 3.13+ skips hidden .pth files, breaking editable installs.
+This module is imported normally by site.py (unaffected by hidden flags)
+and adds the src/ directory to sys.path.
+"""
+import os, sys
+_src = os.path.normpath(os.path.join(os.path.dirname(__file__), *([os.pardir] * 4), "src"))
+if os.path.isdir(_src) and _src not in sys.path:
+    sys.path.insert(0, _src)
+PYEOF
+
+echo "Dev environment ready. Activate with: source .venv/bin/activate"

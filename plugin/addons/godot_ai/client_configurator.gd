@@ -53,38 +53,96 @@ static func client_type_from_string(name: String) -> int:
 
 
 # --- Server command discovery ---
+#
+# Three-tier resolution:
+#   1. .venv python  — dev checkout, source code
+#   2. uvx           — user install, published package from PyPI
+#   3. godot-ai CLI  — system-wide pip/pipx/uv install
 
-## Get the absolute path to the server command.
-## Checks: well-known install locations → which → venv python → system python.
+## Read the plugin version from plugin.cfg.
+static func get_plugin_version() -> String:
+	var cfg := ConfigFile.new()
+	if cfg.load("res://addons/godot_ai/plugin.cfg") == OK:
+		return cfg.get_value("plugin", "version", "0.0.1")
+	return "0.0.1"
+
+
+## True if a .venv exists near the project (repo checkout).
+static func is_dev_checkout() -> bool:
+	return not _find_venv_python().is_empty()
+
+
+## Get the server launch command. Returns empty array if nothing found.
 static func get_server_command() -> Array[String]:
-	var home := OS.get_environment("HOME")
-	for bin_path in [
-		home.path_join(".local/bin/godot-ai"),
-		"/usr/local/bin/godot-ai",
-		"/opt/homebrew/bin/godot-ai",
-	]:
-		if FileAccess.file_exists(bin_path):
-			return [bin_path]
-
-	var output: Array = []
-	var exit_code := OS.execute("which", ["godot-ai"], output, true)
-	if exit_code == 0 and output.size() > 0:
-		var cmd_path: String = output[0].strip_edges()
-		if not cmd_path.is_empty():
-			return [cmd_path]
-
+	# Tier 1: dev checkout — use venv python + source
 	var venv_python := _find_venv_python()
 	if not venv_python.is_empty():
+		print("MCP | using dev venv: %s" % venv_python)
 		return [venv_python, "-m", "godot_ai"]
 
-	return ["python3", "-m", "godot_ai"]
+	# Tier 2: uvx — published package, auto-updates
+	var uvx := find_uvx()
+	if not uvx.is_empty():
+		var version := get_plugin_version()
+		print("MCP | using uvx (godot-ai~=%s)" % version)
+		return [uvx, "--from", "godot-ai~=%s" % version, "godot-ai"]
+
+	# Tier 3: system install fallback
+	var system_cmd := _find_system_install()
+	if not system_cmd.is_empty():
+		print("MCP | using system install: %s" % system_cmd)
+		return [system_cmd]
+
+	push_warning("MCP | no server found — install uv or run: pip install godot-ai")
+	return []
+
+
+## Find the uvx executable, checking platform-specific locations.
+static func find_uvx() -> String:
+	var extra_paths := _get_platform_path_prepend()
+	var search_names := ["uvx"]
+
+	for name in search_names:
+		# Check extra platform paths first
+		for dir in extra_paths:
+			var full := dir.path_join(name)
+			if FileAccess.file_exists(full):
+				return full
+
+		# Check via which/where
+		var cmd := "which" if OS.get_name() != "Windows" else "where"
+		var output: Array = []
+		var env_path := OS.get_environment("PATH")
+		if not extra_paths.is_empty():
+			var prepend := ":".join(extra_paths) if OS.get_name() != "Windows" else ";".join(extra_paths)
+			env_path = prepend + (":" if OS.get_name() != "Windows" else ";") + env_path
+		var exit_code := OS.execute(cmd, [name], output, true)
+		if exit_code == 0 and output.size() > 0:
+			var found: String = output[0].strip_edges()
+			if not found.is_empty():
+				return found
+
+	return ""
+
+
+## Check if uv/uvx is installed. Returns version string or empty.
+static func check_uv_version() -> String:
+	var uvx := find_uvx()
+	if uvx.is_empty():
+		return ""
+	var output: Array = []
+	var exit_code := OS.execute(uvx, ["--version"], output, true)
+	if exit_code == 0 and output.size() > 0:
+		return output[0].strip_edges()
+	return ""
 
 
 static func _find_venv_python() -> String:
-	var project_dir := ProjectSettings.globalize_path("res://")
-	var dir := project_dir
+	var dir := ProjectSettings.globalize_path("res://").rstrip("/")
+	var python_name := "python" if OS.get_name() != "Windows" else "python.exe"
+	var venv_dir := ".venv/bin/" if OS.get_name() != "Windows" else ".venv/Scripts/"
 	for i in 5:
-		var venv_path := dir.path_join(".venv/bin/python")
+		var venv_path := dir.path_join(venv_dir + python_name)
 		if FileAccess.file_exists(venv_path):
 			return venv_path
 		var parent := dir.get_base_dir()
@@ -92,6 +150,45 @@ static func _find_venv_python() -> String:
 			break
 		dir = parent
 	return ""
+
+
+static func _find_system_install() -> String:
+	var cmd := "which" if OS.get_name() != "Windows" else "where"
+	var output: Array = []
+	var exit_code := OS.execute(cmd, ["godot-ai"], output, true)
+	if exit_code == 0 and output.size() > 0:
+		var found: String = output[0].strip_edges()
+		if not found.is_empty():
+			return found
+	return ""
+
+
+## Platform-specific directories where uv/uvx might be installed.
+static func _get_platform_path_prepend() -> Array[String]:
+	match OS.get_name():
+		"macOS":
+			var home := OS.get_environment("HOME")
+			return [
+				home.path_join(".local/bin"),
+				"/opt/homebrew/bin",
+				"/usr/local/bin",
+			]
+		"Windows":
+			var local := OS.get_environment("LOCALAPPDATA")
+			var prog := OS.get_environment("ProgramFiles")
+			var paths: Array[String] = []
+			if not local.is_empty():
+				paths.append(local.path_join("Programs/uv"))
+			if not prog.is_empty():
+				paths.append(prog.path_join("uv"))
+			return paths
+		"Linux":
+			var home := OS.get_environment("HOME")
+			return [
+				home.path_join(".local/bin"),
+				"/usr/local/bin",
+			]
+	return []
 
 
 # --- Claude Code ---

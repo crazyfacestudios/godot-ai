@@ -57,3 +57,122 @@ func create_node(params: Dictionary) -> Dictionary:
 			"undoable": true,
 		}
 	}
+
+
+func get_node_properties(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("path", "")
+	if node_path.is_empty():
+		return McpErrorCodes.make(McpErrorCodes.INVALID_PARAMS, "Missing required param: path")
+
+	var scene_root := EditorInterface.get_edited_scene_root()
+	if scene_root == null:
+		return McpErrorCodes.make(McpErrorCodes.EDITOR_NOT_READY, "No scene open")
+
+	var node := ScenePath.resolve(node_path, scene_root)
+	if node == null:
+		return McpErrorCodes.make(McpErrorCodes.INVALID_PARAMS, "Node not found: %s" % node_path)
+
+	var properties: Array[Dictionary] = []
+	for prop in node.get_property_list():
+		var usage: int = prop.get("usage", 0)
+		# Only include properties visible in the inspector (PROPERTY_USAGE_EDITOR)
+		if not (usage & PROPERTY_USAGE_EDITOR):
+			continue
+		var value = node.get(prop.name)
+		properties.append({
+			"name": prop.name,
+			"type": type_string(prop.type),
+			"value": _serialize_value(value),
+		})
+	return {
+		"data": {
+			"path": node_path,
+			"node_type": node.get_class(),
+			"properties": properties,
+			"count": properties.size(),
+		}
+	}
+
+
+func get_children(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("path", "")
+	if node_path.is_empty():
+		return McpErrorCodes.make(McpErrorCodes.INVALID_PARAMS, "Missing required param: path")
+
+	var scene_root := EditorInterface.get_edited_scene_root()
+	if scene_root == null:
+		return McpErrorCodes.make(McpErrorCodes.EDITOR_NOT_READY, "No scene open")
+
+	var node := ScenePath.resolve(node_path, scene_root)
+	if node == null:
+		return McpErrorCodes.make(McpErrorCodes.INVALID_PARAMS, "Node not found: %s" % node_path)
+
+	var children: Array[Dictionary] = []
+	for child in node.get_children():
+		children.append({
+			"name": child.name,
+			"type": child.get_class(),
+			"path": ScenePath.from_node(child, scene_root),
+			"children_count": child.get_child_count(),
+		})
+	return {
+		"data": {
+			"parent_path": node_path,
+			"children": children,
+			"count": children.size(),
+		}
+	}
+
+
+func get_groups(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("path", "")
+	if node_path.is_empty():
+		return McpErrorCodes.make(McpErrorCodes.INVALID_PARAMS, "Missing required param: path")
+
+	var scene_root := EditorInterface.get_edited_scene_root()
+	if scene_root == null:
+		return McpErrorCodes.make(McpErrorCodes.EDITOR_NOT_READY, "No scene open")
+
+	var node := ScenePath.resolve(node_path, scene_root)
+	if node == null:
+		return McpErrorCodes.make(McpErrorCodes.INVALID_PARAMS, "Node not found: %s" % node_path)
+
+	var groups: Array[String] = []
+	for group in node.get_groups():
+		# Skip internal groups (start with underscore)
+		if not str(group).begins_with("_"):
+			groups.append(str(group))
+	return {
+		"data": {
+			"path": node_path,
+			"groups": groups,
+			"count": groups.size(),
+		}
+	}
+
+
+## Convert a Godot Variant to a JSON-safe value.
+static func _serialize_value(value: Variant) -> Variant:
+	if value == null:
+		return null
+	match typeof(value):
+		TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING:
+			return value
+		TYPE_VECTOR2:
+			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR3:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_COLOR:
+			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_TRANSFORM2D:
+			return str(value)
+		TYPE_TRANSFORM3D:
+			return str(value)
+		TYPE_NODE_PATH:
+			return str(value)
+		TYPE_OBJECT:
+			if value is Resource and value.resource_path:
+				return value.resource_path
+			return str(value)
+		_:
+			return str(value)

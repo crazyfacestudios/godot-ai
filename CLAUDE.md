@@ -17,7 +17,7 @@ AI Client → MCP (stdio/sse) → Python FastMCP server → WebSocket (port 9500
 
 ## Key conventions
 
-- **GDScript plugin is the canonical copy** in `plugin/`. After editing, copy to `test_project/addons/godot_ai/` for testing.
+- **GDScript plugin is the canonical copy** in `plugin/`. `test_project/addons/godot_ai` is a symlink — no copy needed.
 - **Error codes**: Defined in `protocol/errors.py` (Python) and as constants at the top of `connection.gd` (GDScript). Keep in sync.
 - **Tools return `dict`**: `GodotClient.send()` returns `response.data` (a dict) or raises `GodotCommandError`. Tools just `return await app.client.send(...)`.
 - **Plugin runs on main thread**: All GDScript executes in `_process()` with a 4ms frame budget. Never block. Use `call_deferred` for scene tree mutations.
@@ -27,25 +27,52 @@ AI Client → MCP (stdio/sse) → Python FastMCP server → WebSocket (port 9500
 ## Dev workflow
 
 ```bash
-cd ~/Downloads/godot-ai
+cd ~/Documents/godot-ai
 source .venv/bin/activate
+pip install -e ".[dev]" && chflags -R nohidden .venv  # editable install + macOS fix
 pytest -v                    # run tests
 ruff check src/ tests/       # lint
 ruff format src/ tests/      # format
-
-# Start server for testing (stays up)
-python -m godot_ai --transport sse
-
-# Start server for Claude Desktop / Claude Code (stdio)
-python -m godot_ai
 ```
+
+**macOS + Python 3.13 quirk**: Files inside `.venv` inherit the macOS hidden flag (dot-prefix directory). Python 3.13 skips hidden `.pth` files, breaking editable installs. Always run `chflags -R nohidden .venv` after `pip install -e`. The `pythonpath` setting in `pyproject.toml` handles this for pytest, but the server needs the `.pth` fix.
+
+### Server lifecycle in dev
+
+The plugin manages the server process:
+- **Reload Plugin** in the Godot dock kills the old server, starts a new one from `.venv/bin/python -m godot_ai`
+- After Reload Plugin, do `/mcp` in Claude Code to reconnect
+
+The plugin prefers the local `.venv` over system-installed `godot-ai` so dev checkouts always use source code.
+
+For Python auto-reload during dev (no need to touch Godot):
+```bash
+python -m godot_ai --transport streamable-http --port 8000 --reload
+```
+
+## Testing
+
+### Python tests
+```bash
+pytest -v                    # 32 unit + integration tests
+```
+
+### Godot-side tests
+GDScript test suites in `test_project/tests/` exercise handlers inside the running editor. Run via MCP:
+```
+run_tests                    # run all suites
+run_tests suite=scene        # run one suite
+get_test_results             # review last results
+```
+
+Test suites extend `McpTestSuite` (assertion methods: `assert_true`, `assert_eq`, `assert_has_key`, `assert_contains`, `assert_is_error`, etc.). Drop `test_*.gd` files in `res://tests/` and they're auto-discovered.
 
 ## Testing against Godot
 
-1. Start server: `python -m godot_ai --transport sse`
-2. Open `test_project/` in Godot, enable plugin in Project Settings > Plugins
-3. Open a scene (e.g. `main.tscn`)
-4. Server logs should show `Session connected`
+1. Open `test_project/` in Godot, enable plugin in Project Settings > Plugins
+2. Open a scene (e.g. `main.tscn`)
+3. Plugin starts the server automatically; logs should show `Session connected`
+4. Use `/mcp` in Claude Code to connect
 
 ## Client configuration
 
@@ -61,6 +88,7 @@ MCP tools `client_configure` and `client_status` expose this to AI clients.
 2. Register it in `plugin.gd`: `_dispatcher.register("command_name", handler.method)`
 3. Add a Python tool in `tools/<domain>.py` that calls `app.client.send("command_name", params)`
 4. Register the tool module in `server.py` if it's a new file
+5. Add tests: Python integration test in `tests/` AND GDScript test in `test_project/tests/`
 
 ## Write tools must be undoable
 
@@ -75,6 +103,14 @@ _undo_redo.commit_action()
 ```
 
 Response must include `"undoable": true`. If an operation genuinely can't be undone (file writes, scene open/close), include `"undoable": false` with a reason.
+
+## Test coverage
+
+100% code coverage for core features, always. Every tool, handler, and protocol path must have both:
+- **Python tests** (`tests/unit/` and `tests/integration/`): protocol, WebSocket, client logic
+- **Godot-side tests** (`test_project/tests/`): handlers exercised against the live editor
+
+New features don't ship without tests. Regressions are caught before they merge.
 
 ## What NOT to do
 

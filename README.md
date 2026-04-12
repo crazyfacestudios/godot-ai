@@ -2,7 +2,7 @@
 
 Production-grade MCP server and AI tools for the Godot engine.
 
-> **Status: Early development.** Core tools working, more coming.
+> **Status: Early development.** Core read tools working, write tools coming.
 
 *This is an independent community project, not affiliated with or endorsed by the [Godot Foundation](https://godot.foundation). Godot Engine is a free and open-source project under the [MIT license](https://godotengine.org/license).*
 
@@ -25,14 +25,14 @@ The Godot plugin starts a shared Python server. MCP clients connect via HTTP. Th
 
 ## Quick start
 
-### 1. Install the server
+### 1. Install uv
 
 ```bash
-# With uv (recommended)
-uv tool install /path/to/godot-ai
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Or with pip
-pip install -e /path/to/godot-ai
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 ### 2. Install the plugin
@@ -44,13 +44,13 @@ Copy `plugin/addons/godot_ai/` into your Godot project's `addons/` folder.
 In Godot: **Project > Project Settings > Plugins** — enable "Godot AI".
 
 The plugin will:
-- Start the MCP server automatically
+- Install and start the MCP server automatically (via uvx)
 - Connect to the server via WebSocket
-- Auto-configure Claude Code and Antigravity (if installed)
+- Show connection status in the Godot AI dock panel
 
-### 4. Use from an AI client
+### 4. Connect an AI client
 
-The plugin auto-configures supported clients on first enable. If you need to configure manually:
+Use the dock panel's **Configure** buttons, or manually:
 
 **Claude Code:**
 ```bash
@@ -69,7 +69,7 @@ claude mcp add --scope user --transport http godot-ai http://127.0.0.1:8000/mcp
 }
 ```
 
-## Working tools
+## Tools
 
 | Tool | Description |
 |------|-------------|
@@ -78,8 +78,15 @@ claude mcp add --scope user --transport http godot-ai http://127.0.0.1:8000/mcp
 | `editor_state` | Get Godot version, project name, current scene, play state |
 | `editor_selection_get` | Get currently selected nodes |
 | `scene_get_hierarchy` | Read the full scene tree with node types and paths |
+| `scene_get_roots` | Get all open scenes in the editor |
 | `node_create` | Create nodes by type with optional name and parent path |
+| `node_find` | Find nodes by name, type, or group |
+| `node_get_properties` | Get all properties of a node |
+| `node_get_children` | Get direct children of a node |
+| `node_get_groups` | Get groups a node belongs to |
 | `logs_read` | Read recent MCP command log from the Godot console |
+| `run_tests` | Run GDScript test suites inside the editor |
+| `get_test_results` | Get results from the last test run |
 | `client_configure` | Configure an MCP client (Claude Code / Antigravity) |
 | `client_status` | Check which clients are configured |
 
@@ -93,23 +100,26 @@ claude mcp add --scope user --transport http godot-ai http://127.0.0.1:8000/mcp
 ## Requirements
 
 - Godot 4.3+ (4.4+ recommended, tested on 4.6.2)
-- Python 3.11+
-- FastMCP 3.x
+- [uv](https://docs.astral.sh/uv/) (for server installation)
 
 ## Development
 
 ```bash
 # Setup
 pip install -e ".[dev]"
+chflags -R nohidden .venv   # macOS fix for Python 3.13
 
-# Run tests
+# Run Python tests (32 unit + integration)
 pytest -v
+
+# Run Godot-side tests (35 handler tests, requires editor running)
+# Use the run_tests MCP tool
 
 # Lint
 ruff check src/ tests/
 
-# Start server manually (for testing without the plugin)
-python -m godot_ai --transport streamable-http --port 8000
+# Start server with auto-reload (dev)
+python -m godot_ai --transport streamable-http --port 8000 --reload
 ```
 
 ## License

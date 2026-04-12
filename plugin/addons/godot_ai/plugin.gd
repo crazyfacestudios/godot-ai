@@ -19,15 +19,23 @@ func _enter_tree() -> void:
 	var scene_handler := SceneHandler.new()
 	var node_handler := NodeHandler.new(get_undo_redo())
 	var client_handler := ClientHandler.new()
-	_handlers = [editor_handler, scene_handler, node_handler, client_handler]
+	var test_handler := TestHandler.new(get_undo_redo(), _log_buffer)
+	_handlers = [editor_handler, scene_handler, node_handler, client_handler, test_handler]
 
 	_dispatcher.register("get_editor_state", editor_handler.get_editor_state)
 	_dispatcher.register("get_scene_tree", scene_handler.get_scene_tree)
+	_dispatcher.register("get_open_scenes", scene_handler.get_open_scenes)
+	_dispatcher.register("find_nodes", scene_handler.find_nodes)
 	_dispatcher.register("get_selection", editor_handler.get_selection)
 	_dispatcher.register("create_node", node_handler.create_node)
+	_dispatcher.register("get_node_properties", node_handler.get_node_properties)
+	_dispatcher.register("get_children", node_handler.get_children)
+	_dispatcher.register("get_groups", node_handler.get_groups)
 	_dispatcher.register("get_logs", editor_handler.get_logs)
 	_dispatcher.register("configure_client", client_handler.configure_client)
 	_dispatcher.register("check_client_status", client_handler.check_client_status)
+	_dispatcher.register("run_tests", test_handler.run_tests)
+	_dispatcher.register("get_test_results", test_handler.get_test_results)
 
 	_connection = Connection.new()
 	_connection.log_buffer = _log_buffer
@@ -57,11 +65,9 @@ func _exit_tree() -> void:
 
 
 func _start_server() -> void:
-	var output: Array = []
-	var exit_code := OS.execute("lsof", ["-ti:%d" % McpClientConfigurator.SERVER_WS_PORT], output, true)
-	if exit_code == 0 and output.size() > 0 and not output[0].strip_edges().is_empty():
-		print("MCP | server already running on port %d" % McpClientConfigurator.SERVER_WS_PORT)
-		return
+	## Kill any stale listener on our HTTP port (leftover from crash,
+	## old install, or a different server like godot-mcp-studio).
+	_kill_listener_on_port(McpClientConfigurator.SERVER_HTTP_PORT)
 
 	var server_cmd := McpClientConfigurator.get_server_command()
 	if server_cmd.is_empty():
@@ -78,6 +84,22 @@ func _start_server() -> void:
 		print("MCP | started server (PID %d): %s %s" % [_server_pid, cmd, " ".join(args)])
 	else:
 		push_warning("MCP | failed to start server")
+
+
+func _kill_listener_on_port(port: int) -> void:
+	var output: Array = []
+	## -sTCP:LISTEN finds only the server process, not clients connected to it
+	var exit_code := OS.execute("lsof", ["-ti:%d" % port, "-sTCP:LISTEN"], output, true)
+	if exit_code != 0 or output.is_empty():
+		return
+	var pids_str: String = output[0].strip_edges()
+	if pids_str.is_empty():
+		return
+	for pid_str in pids_str.split("\n"):
+		var pid := pid_str.strip_edges().to_int()
+		if pid > 0:
+			OS.kill(pid)
+			print("MCP | killed stale process on port %d (PID %d)" % [port, pid])
 
 
 func _stop_server() -> void:

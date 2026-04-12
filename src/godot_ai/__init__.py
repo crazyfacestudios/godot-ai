@@ -19,6 +19,11 @@ def main():
     parser.add_argument(
         "--ws-port", type=int, default=9500, help="WebSocket port for Godot plugin (default: 9500)"
     )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Auto-restart on source changes (dev mode, HTTP transports only)",
+    )
     args = parser.parse_args()
 
     from godot_ai.server import create_server
@@ -28,5 +33,10 @@ def main():
     transport_kwargs = {}
     if args.transport in ("sse", "streamable-http"):
         transport_kwargs["port"] = args.port
+        if args.reload:
+            transport_kwargs["uvicorn_config"] = {
+                "reload": True,
+                "reload_dirs": ["src"],
+            }
 
     server.run(transport=args.transport, **transport_kwargs)
