@@ -70,10 +70,22 @@ func _build_ui() -> void:
 	_server_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	add_child(_server_label)
 
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 6)
+
 	_reconnect_btn = Button.new()
 	_reconnect_btn.text = "Reconnect"
+	_reconnect_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_reconnect_btn.pressed.connect(_on_reconnect)
-	add_child(_reconnect_btn)
+	btn_row.add_child(_reconnect_btn)
+
+	var reload_btn := Button.new()
+	reload_btn.text = "Reload Plugin"
+	reload_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reload_btn.pressed.connect(_on_reload_plugin)
+	btn_row.add_child(reload_btn)
+
+	add_child(btn_row)
 
 	add_child(HSeparator.new())
 
@@ -166,6 +178,12 @@ func _update_log() -> void:
 	for line in new_lines:
 		_log_display.add_text(line + "\n")
 	_last_log_count = count
+
+
+func _on_reload_plugin() -> void:
+	# Toggle plugin off/on to reload all GDScript
+	EditorInterface.set_plugin_enabled("res://addons/godot_ai/plugin.cfg", false)
+	EditorInterface.set_plugin_enabled("res://addons/godot_ai/plugin.cfg", true)
 
 
 func _on_reconnect() -> void:
