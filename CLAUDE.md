@@ -18,10 +18,10 @@ AI Client → MCP (stdio/sse) → Python FastMCP server → WebSocket (port 9500
 ## Key conventions
 
 - **GDScript plugin is the canonical copy** in `plugin/`. `test_project/addons/godot_ai` is a symlink — no copy needed.
-- **Error codes**: Defined in `protocol/errors.py` (Python) and as constants at the top of `connection.gd` (GDScript). Keep in sync.
+- **Error codes**: Defined in `protocol/errors.py` (Python) and `utils/error_codes.gd` (GDScript). Keep in sync.
 - **Tools return `dict`**: `GodotClient.send()` returns `response.data` (a dict) or raises `GodotCommandError`. Tools just `return await app.client.send(...)`.
 - **Plugin runs on main thread**: All GDScript executes in `_process()` with a 4ms frame budget. Never block. Use `call_deferred` for scene tree mutations.
-- **Scene paths are clean**: `/Main/Camera3D` format, not raw Godot internal paths. Use `_scene_path(node, scene_root)` in GDScript.
+- **Scene paths are clean**: `/Main/Camera3D` format, not raw Godot internal paths. Use `ScenePath.from_node(node, scene_root)` in GDScript.
 - **MCP logging**: Plugin prints `MCP | [recv] command(params)` / `MCP | [send] command -> ok` to Godot console. Controlled by `mcp_logging` var.
 
 ## Dev workflow
@@ -54,7 +54,7 @@ python -m godot_ai --transport streamable-http --port 8000 --reload
 
 ### Python tests
 ```bash
-pytest -v                    # 32 unit + integration tests
+pytest -v                    # 38 unit + integration tests
 ```
 
 ### Godot-side tests
