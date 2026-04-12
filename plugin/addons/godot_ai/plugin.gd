@@ -65,9 +65,11 @@ func _exit_tree() -> void:
 
 
 func _start_server() -> void:
-	## Kill any stale listener on our HTTP port (leftover from crash,
-	## old install, or a different server like godot-mcp-studio).
-	_kill_listener_on_port(McpClientConfigurator.SERVER_HTTP_PORT)
+	## If a server is already listening on our HTTP port, use it.
+	## This covers: CI (external server), another Godot instance, or manual start.
+	if _is_port_in_use(McpClientConfigurator.SERVER_HTTP_PORT):
+		print("MCP | server already running on port %d, using existing" % McpClientConfigurator.SERVER_HTTP_PORT)
+		return
 
 	var server_cmd := McpClientConfigurator.get_server_command()
 	if server_cmd.is_empty():
@@ -86,20 +88,16 @@ func _start_server() -> void:
 		push_warning("MCP | failed to start server")
 
 
-func _kill_listener_on_port(port: int) -> void:
+func _is_port_in_use(port: int) -> bool:
 	var output: Array = []
-	## -sTCP:LISTEN finds only the server process, not clients connected to it
-	var exit_code := OS.execute("lsof", ["-ti:%d" % port, "-sTCP:LISTEN"], output, true)
-	if exit_code != 0 or output.is_empty():
-		return
-	var pids_str: String = output[0].strip_edges()
-	if pids_str.is_empty():
-		return
-	for pid_str in pids_str.split("\n"):
-		var pid := pid_str.strip_edges().to_int()
-		if pid > 0:
-			OS.kill(pid)
-			print("MCP | killed stale process on port %d (PID %d)" % [port, pid])
+	if OS.get_name() == "Windows":
+		var exit_code := OS.execute("netstat", ["-ano"], output, true)
+		if exit_code == 0 and output.size() > 0:
+			return output[0].find(":%d " % port) >= 0 and output[0].find("LISTENING") >= 0
+	else:
+		var exit_code := OS.execute("lsof", ["-ti:%d" % port, "-sTCP:LISTEN"], output, true)
+		return exit_code == 0 and output.size() > 0 and not output[0].strip_edges().is_empty()
+	return false
 
 
 func _stop_server() -> void:
