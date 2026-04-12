@@ -135,6 +135,10 @@ func _dispatch_command(cmd: Dictionary) -> void:
 			result = _handle_create_node(params)
 		"get_logs":
 			result = _handle_get_logs(params)
+		"configure_client":
+			result = _handle_configure_client(params)
+		"check_client_status":
+			result = _handle_check_client_status(params)
 		_:
 			result = _error(ERR_UNKNOWN_COMMAND, "Unknown command: %s" % command)
 
@@ -270,6 +274,42 @@ func _handle_create_node(params: Dictionary) -> Dictionary:
 			"parent_path": _scene_path(parent, scene_root),
 		}
 	}
+
+
+func _handle_configure_client(params: Dictionary) -> Dictionary:
+	var client_name: String = params.get("client", "")
+	var client_type: McpClientConfigurator.ClientType
+	match client_name:
+		"claude_code":
+			client_type = McpClientConfigurator.ClientType.CLAUDE_CODE
+		"antigravity":
+			client_type = McpClientConfigurator.ClientType.ANTIGRAVITY
+		_:
+			return _error(ERR_INVALID_PARAMS, "Unknown client: %s. Use 'claude_code' or 'antigravity'" % client_name)
+	var result := McpClientConfigurator.configure(client_type)
+	if result.get("status") == "error":
+		return _error(ERR_INTERNAL_ERROR, result.get("message", "Configuration failed"))
+	return {"data": result}
+
+
+func _handle_check_client_status(params: Dictionary) -> Dictionary:
+	var results := {}
+	for client_name in ["claude_code", "antigravity"]:
+		var client_type: McpClientConfigurator.ClientType
+		match client_name:
+			"claude_code":
+				client_type = McpClientConfigurator.ClientType.CLAUDE_CODE
+			"antigravity":
+				client_type = McpClientConfigurator.ClientType.ANTIGRAVITY
+		var status := McpClientConfigurator.check_status(client_type)
+		match status:
+			McpClientConfigurator.ConfigStatus.CONFIGURED:
+				results[client_name] = "configured"
+			McpClientConfigurator.ConfigStatus.NOT_CONFIGURED:
+				results[client_name] = "not_configured"
+			_:
+				results[client_name] = "error"
+	return {"data": {"clients": results}}
 
 
 func _handle_get_logs(params: Dictionary) -> Dictionary:

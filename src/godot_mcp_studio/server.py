@@ -13,6 +13,7 @@ from fastmcp import FastMCP
 from godot_mcp_studio.godot_client.client import GodotClient
 from godot_mcp_studio.resources.sessions import register_session_resources
 from godot_mcp_studio.sessions.registry import SessionRegistry
+from godot_mcp_studio.tools.client import register_client_tools
 from godot_mcp_studio.tools.editor import register_editor_tools
 from godot_mcp_studio.tools.node import register_node_tools
 from godot_mcp_studio.tools.scene import register_scene_tools
@@ -62,6 +63,7 @@ def create_server(ws_port: int = 9500) -> FastMCP:
     register_editor_tools(mcp)
     register_scene_tools(mcp)
     register_node_tools(mcp)
+    register_client_tools(mcp)
     register_session_resources(mcp)
 
     return mcp

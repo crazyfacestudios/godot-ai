@@ -47,13 +47,21 @@ python -m godot_mcp_studio
 3. Open a scene (e.g. `main.tscn`)
 4. Server logs should show `Session connected`
 
+## Client configuration
+
+The plugin can configure MCP clients via `client_configurator.gd`:
+- **Claude Code**: uses `claude mcp add` CLI to register the server
+- **Antigravity**: writes directly to `~/.gemini/antigravity/mcp_config.json`
+
+MCP tools `client_configure` and `client_status` expose this to AI clients.
+
 ## Adding a new tool
 
 1. Add a GDScript handler in `connection.gd`: `_handle_<name>(params) -> Dictionary`
 2. Add the command string to the `match` block in `_dispatch_command`
 3. Add a Python tool in `tools/<domain>.py` that calls `app.client.send("<command>", params)`
 4. Register the tool in `server.py` if it's a new module
-5. Copy updated `connection.gd` to `test_project/addons/godot_mcp_studio/`
+5. Copy updated plugin files to `test_project/addons/godot_mcp_studio/`
 
 ## What NOT to do
 
