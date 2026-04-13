@@ -69,6 +69,10 @@ async def reload_plugin(runtime: Runtime) -> dict:
     }
 
 
+async def editor_quit(runtime: Runtime) -> dict:
+    return await runtime.send_command("quit_editor")
+
+
 async def selection_resource_data(runtime: Runtime) -> dict:
     return await editor_selection_get(runtime)
 

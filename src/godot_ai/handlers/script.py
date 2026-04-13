@@ -1,0 +1,31 @@
+"""Shared handlers for script tools."""
+
+from __future__ import annotations
+
+from godot_ai.runtime.interface import Runtime
+
+
+async def script_create(runtime: Runtime, path: str, content: str = "") -> dict:
+    return await runtime.send_command(
+        "create_script",
+        {"path": path, "content": content},
+    )
+
+
+async def script_read(runtime: Runtime, path: str) -> dict:
+    return await runtime.send_command("read_script", {"path": path})
+
+
+async def script_attach(runtime: Runtime, path: str, script_path: str) -> dict:
+    return await runtime.send_command(
+        "attach_script",
+        {"path": path, "script_path": script_path},
+    )
+
+
+async def script_detach(runtime: Runtime, path: str) -> dict:
+    return await runtime.send_command("detach_script", {"path": path})
+
+
+async def script_find_symbols(runtime: Runtime, path: str) -> dict:
+    return await runtime.send_command("find_symbols", {"path": path})
