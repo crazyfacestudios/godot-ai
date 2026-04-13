@@ -33,6 +33,7 @@ func _enter_tree() -> void:
 	_dispatcher.register("get_children", node_handler.get_children)
 	_dispatcher.register("get_groups", node_handler.get_groups)
 	_dispatcher.register("get_logs", editor_handler.get_logs)
+	_dispatcher.register("reload_plugin", editor_handler.reload_plugin)
 	_dispatcher.register("get_project_setting", project_handler.get_project_setting)
 	_dispatcher.register("search_filesystem", project_handler.search_filesystem)
 	_dispatcher.register("configure_client", client_handler.configure_client)
@@ -48,7 +49,7 @@ func _enter_tree() -> void:
 	# Dock panel
 	_dock = McpDock.new()
 	_dock.name = "Godot AI"
-	_dock.setup(_connection, _log_buffer)
+	_dock.setup(_connection, _log_buffer, self)
 	add_control_to_dock(DOCK_SLOT_RIGHT_BL, _dock)
 
 	_log_buffer.log("plugin loaded")
@@ -111,3 +112,55 @@ func _stop_server() -> void:
 		OS.kill(_server_pid)
 		print("MCP | stopped server (PID %d)" % _server_pid)
 		_server_pid = -1
+
+
+func start_dev_server() -> void:
+	## Start a dev server with --reload that survives plugin reloads.
+	## Kills any managed server first, waits for the port to free, then spawns.
+	_stop_server()
+	get_tree().create_timer(0.5).timeout.connect(func():
+		var server_cmd := McpClientConfigurator.get_server_command()
+		if server_cmd.is_empty():
+			push_warning("MCP | could not find server command for dev server")
+			return
+
+		var cmd: String = server_cmd[0]
+		var inner_args: Array[String] = []
+		inner_args.assign(server_cmd.slice(1))
+		inner_args.append_array([
+			"--transport", "streamable-http",
+			"--port", str(McpClientConfigurator.SERVER_HTTP_PORT),
+			"--reload",
+		])
+
+		var pid := OS.create_process(cmd, inner_args)
+		if pid > 0:
+			print("MCP | started dev server with --reload (PID %d): %s %s" % [pid, cmd, " ".join(inner_args)])
+		else:
+			push_warning("MCP | failed to start dev server")
+	)
+
+
+func stop_dev_server() -> void:
+	## Stop any server running on the HTTP port (by port, not PID).
+	## Used for dev servers whose PID we don't track across reloads.
+	if _server_pid > 0:
+		# We have a managed server — use normal stop
+		_stop_server()
+		return
+	var output: Array = []
+	var port := McpClientConfigurator.SERVER_HTTP_PORT
+	if OS.get_name() == "Windows":
+		# Find PID listening on port, then kill
+		var exit_code := OS.execute("cmd", ["/c", "for /f \"tokens=5\" %%a in ('netstat -ano ^| findstr :%d ^| findstr LISTENING') do taskkill /PID %%a /F" % port], output, true)
+		if exit_code == 0:
+			print("MCP | stopped dev server on port %d" % port)
+	else:
+		var exit_code := OS.execute("bash", ["-c", "lsof -ti:%d -sTCP:LISTEN | xargs kill 2>/dev/null" % port], output, true)
+		if exit_code == 0:
+			print("MCP | stopped dev server on port %d" % port)
+
+
+func is_dev_server_running() -> bool:
+	## Returns true if a server is running on the HTTP port that we didn't start as managed.
+	return _server_pid <= 0 and _is_port_in_use(McpClientConfigurator.SERVER_HTTP_PORT)
