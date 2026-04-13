@@ -585,15 +585,16 @@ All write tools check readiness before executing:
 - [x] Batch 5: Scene writes — scene_create, scene_open, scene_save, scene_save_as (scene_close deferred: no public Godot API)
 - [x] Batch 6: Node writes — node_delete, node_reparent, node_set_property, node_duplicate, node_move, node_add_to_group, node_remove_from_group, editor_selection_set
 - [x] Batch 7: Script and resource writes — script_create, script_read, script_attach, script_detach, script_find_symbols, resource_search, resource_load, resource_assign, filesystem_read_text, filesystem_write_text, import_reimport
-- [x] 190 Python tests + 124 Godot-side tests = 314 total
+- [x] editor_quit tool — graceful editor shutdown (deferred tree.quit), CI smoke test
+- [x] 192 Python tests + 124 Godot-side tests = 316 total
 - [x] Fixed SIGABRT crash: re-entrant `_process()` during `_save_scene_with_preview` (Connection.pause_processing guard)
 
 ### Phase 2 exit criteria
 - [x] All Batch 5-7 tools implemented and tested
 - [x] Undo works for node operations (create, delete, reparent, set_property, duplicate, move, group ops)
 - [ ] Write operations are gated on readiness
-- [ ] Manual test: ask Claude to create a scene with 5 nodes and a script — it can
-- [x] 60+ passing tests (190 Python + 124 GDScript = 314 total)
+- [x] Manual test: ask Claude to create a scene with 5 nodes and a script — it can (smoke tested: 7 nodes, player script with 3 signals/4 exports/3 functions, attached, properties set)
+- [x] 60+ passing tests (192 Python + 124 GDScript = 316 total)
 
 ---
 
