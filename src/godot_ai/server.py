@@ -18,9 +18,12 @@ from godot_ai.resources.sessions import register_session_resources
 from godot_ai.sessions.registry import SessionRegistry
 from godot_ai.tools.client import register_client_tools
 from godot_ai.tools.editor import register_editor_tools
+from godot_ai.tools.filesystem import register_filesystem_tools
 from godot_ai.tools.node import register_node_tools
 from godot_ai.tools.project import register_project_tools
+from godot_ai.tools.resource import register_resource_tools
 from godot_ai.tools.scene import register_scene_tools
+from godot_ai.tools.script import register_script_tools
 from godot_ai.tools.session import register_session_tools
 from godot_ai.tools.testing import register_testing_tools
 from godot_ai.transport.websocket import GodotWebSocketServer
@@ -69,6 +72,9 @@ def create_server(ws_port: int = 9500) -> FastMCP:
     register_scene_tools(mcp)
     register_node_tools(mcp)
     register_project_tools(mcp)
+    register_script_tools(mcp)
+    register_resource_tools(mcp)
+    register_filesystem_tools(mcp)
     register_client_tools(mcp)
     register_testing_tools(mcp)
     register_session_resources(mcp)

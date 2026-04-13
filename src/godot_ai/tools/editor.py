@@ -48,6 +48,17 @@ def register_editor_tools(mcp: FastMCP) -> None:
         return await editor_handlers.logs_read(runtime, count=count, offset=offset)
 
     @mcp.tool()
+    async def editor_quit(ctx: Context) -> dict:
+        """Gracefully quit the Godot editor.
+
+        Sends a quit signal to the editor on the next frame, allowing
+        any pending responses to be sent first. The editor will close
+        cleanly without triggering crash dialogs.
+        """
+        runtime = DirectRuntime.from_context(ctx)
+        return await editor_handlers.editor_quit(runtime)
+
+    @mcp.tool()
     async def reload_plugin(ctx: Context) -> dict:
         """Reload the Godot editor plugin and wait for it to reconnect.
 

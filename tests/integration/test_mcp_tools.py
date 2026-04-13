@@ -203,9 +203,7 @@ class TestSceneSaveAsTool:
             )
 
         task = asyncio.create_task(respond())
-        result = await client.call_tool(
-            "scene_save_as", {"path": "res://backup/main_copy.tscn"}
-        )
+        result = await client.call_tool("scene_save_as", {"path": "res://backup/main_copy.tscn"})
         await task
 
         assert result.data["path"] == "res://backup/main_copy.tscn"
@@ -529,9 +527,7 @@ class TestNodeDuplicateTool:
             )
 
         task = asyncio.create_task(respond())
-        result = await client.call_tool(
-            "node_duplicate", {"path": "/Main/Enemy", "name": "Enemy2"}
-        )
+        result = await client.call_tool("node_duplicate", {"path": "/Main/Enemy", "name": "Enemy2"})
         await task
 
         assert result.data["name"] == "Enemy2"
@@ -563,9 +559,7 @@ class TestNodeMoveTool:
             )
 
         task = asyncio.create_task(respond())
-        result = await client.call_tool(
-            "node_move", {"path": "/Main/Camera3D", "index": 2}
-        )
+        result = await client.call_tool("node_move", {"path": "/Main/Camera3D", "index": 2})
         await task
 
         assert result.data["new_index"] == 2
@@ -732,6 +726,30 @@ class TestFilesystemSearchTool:
 
 
 # ---------------------------------------------------------------------------
+# editor_quit
+# ---------------------------------------------------------------------------
+
+
+class TestEditorQuitTool:
+    async def test_quit_editor(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "quit_editor"
+            await plugin.send_response(
+                cmd["request_id"],
+                {"status": "quitting", "message": "Editor quit initiated"},
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("editor_quit", {})
+        await task
+
+        assert result.data["status"] == "quitting"
+
+
+# ---------------------------------------------------------------------------
 # reload_plugin
 # ---------------------------------------------------------------------------
 # No GDScript test for reload_plugin — calling it triggers a real plugin
@@ -852,9 +870,7 @@ class TestTestingTools:
         async def respond():
             cmd = await plugin.recv_command()
             assert cmd["command"] == "run_tests"
-            await plugin.send_response(
-                cmd["request_id"], {"passed": 3, "failed": 0, "results": []}
-            )
+            await plugin.send_response(cmd["request_id"], {"passed": 3, "failed": 0, "results": []})
 
         task = asyncio.create_task(respond())
         result = await client.call_tool("run_tests", {})
@@ -868,9 +884,7 @@ class TestTestingTools:
             cmd = await plugin.recv_command()
             assert cmd["command"] == "run_tests"
             assert cmd["params"]["suite"] == "scene"
-            await plugin.send_response(
-                cmd["request_id"], {"passed": 2, "failed": 0, "results": []}
-            )
+            await plugin.send_response(cmd["request_id"], {"passed": 2, "failed": 0, "results": []})
 
         task = asyncio.create_task(respond())
         result = await client.call_tool("run_tests", {"suite": "scene"})
@@ -883,9 +897,7 @@ class TestTestingTools:
         async def respond():
             cmd = await plugin.recv_command()
             assert cmd["command"] == "get_test_results"
-            await plugin.send_response(
-                cmd["request_id"], {"passed": 5, "failed": 1, "results": []}
-            )
+            await plugin.send_response(cmd["request_id"], {"passed": 5, "failed": 1, "results": []})
 
         task = asyncio.create_task(respond())
         result = await client.call_tool("get_test_results", {})
@@ -973,3 +985,386 @@ class TestResourceReads:
         await task
         data = json.loads(result[0].text)
         assert data["root"] == "Main"
+
+
+# ---------------------------------------------------------------------------
+# script_create
+# ---------------------------------------------------------------------------
+
+
+class TestScriptCreateTool:
+    async def test_create_script(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "create_script"
+            assert cmd["params"]["path"] == "res://scripts/player.gd"
+            assert "extends" in cmd["params"]["content"]
+            await plugin.send_response(
+                cmd["request_id"],
+                {"path": "res://scripts/player.gd", "size": 42, "undoable": False},
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool(
+            "script_create",
+            {"path": "res://scripts/player.gd", "content": "extends Node3D\n"},
+        )
+        await task
+
+        assert result.data["path"] == "res://scripts/player.gd"
+        assert result.data["undoable"] is False
+
+
+# ---------------------------------------------------------------------------
+# script_read
+# ---------------------------------------------------------------------------
+
+
+class TestScriptReadTool:
+    async def test_read_script(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "read_script"
+            assert cmd["params"]["path"] == "res://scripts/player.gd"
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "res://scripts/player.gd",
+                    "content": "extends Node3D\n",
+                    "size": 15,
+                    "line_count": 2,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("script_read", {"path": "res://scripts/player.gd"})
+        await task
+
+        assert result.data["content"] == "extends Node3D\n"
+        assert result.data["line_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# script_attach
+# ---------------------------------------------------------------------------
+
+
+class TestScriptAttachTool:
+    async def test_attach_script(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "attach_script"
+            assert cmd["params"]["path"] == "/Main/Player"
+            assert cmd["params"]["script_path"] == "res://scripts/player.gd"
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "/Main/Player",
+                    "script_path": "res://scripts/player.gd",
+                    "had_previous_script": False,
+                    "undoable": True,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool(
+            "script_attach",
+            {"path": "/Main/Player", "script_path": "res://scripts/player.gd"},
+        )
+        await task
+
+        assert result.data["script_path"] == "res://scripts/player.gd"
+        assert result.data["undoable"] is True
+
+
+# ---------------------------------------------------------------------------
+# script_detach
+# ---------------------------------------------------------------------------
+
+
+class TestScriptDetachTool:
+    async def test_detach_script(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "detach_script"
+            assert cmd["params"]["path"] == "/Main/Player"
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "/Main/Player",
+                    "removed_script": "res://scripts/player.gd",
+                    "undoable": True,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("script_detach", {"path": "/Main/Player"})
+        await task
+
+        assert result.data["removed_script"] == "res://scripts/player.gd"
+        assert result.data["undoable"] is True
+
+    async def test_detach_no_script(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "detach_script"
+            await plugin.send_response(
+                cmd["request_id"],
+                {"path": "/Main/Player", "had_script": False, "undoable": False},
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("script_detach", {"path": "/Main/Player"})
+        await task
+
+        assert result.data["had_script"] is False
+
+
+# ---------------------------------------------------------------------------
+# script_find_symbols
+# ---------------------------------------------------------------------------
+
+
+class TestScriptFindSymbolsTool:
+    async def test_find_symbols(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "find_symbols"
+            assert cmd["params"]["path"] == "res://scripts/player.gd"
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "res://scripts/player.gd",
+                    "class_name": "Player",
+                    "extends": "CharacterBody3D",
+                    "functions": [{"name": "_ready", "line": 5}],
+                    "signals": ["health_changed"],
+                    "exports": [{"name": "speed", "line": 3}],
+                    "function_count": 1,
+                    "signal_count": 1,
+                    "export_count": 1,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("script_find_symbols", {"path": "res://scripts/player.gd"})
+        await task
+
+        assert result.data["class_name"] == "Player"
+        assert result.data["function_count"] == 1
+        assert result.data["functions"][0]["name"] == "_ready"
+        assert result.data["signals"] == ["health_changed"]
+
+
+# ---------------------------------------------------------------------------
+# resource_search
+# ---------------------------------------------------------------------------
+
+
+class TestResourceSearchTool:
+    async def test_search_resources(self, mcp_stack):
+        client, plugin = mcp_stack
+        resources = [
+            {"path": f"res://materials/mat_{i}.tres", "type": "StandardMaterial3D"}
+            for i in range(5)
+        ]
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "search_resources"
+            assert cmd["params"]["type"] == "Material"
+            await plugin.send_response(cmd["request_id"], {"resources": resources, "count": 5})
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool(
+            "resource_search", {"type": "Material", "offset": 2, "limit": 2}
+        )
+        await task
+
+        data = result.data
+        assert len(data["resources"]) == 2
+        assert data["total_count"] == 5
+        assert data["has_more"] is True
+
+
+# ---------------------------------------------------------------------------
+# resource_load
+# ---------------------------------------------------------------------------
+
+
+class TestResourceLoadTool:
+    async def test_load_resource(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "load_resource"
+            assert cmd["params"]["path"] == "res://materials/ground.tres"
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "res://materials/ground.tres",
+                    "type": "StandardMaterial3D",
+                    "properties": [{"name": "albedo_color", "type": "Color"}],
+                    "property_count": 1,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("resource_load", {"path": "res://materials/ground.tres"})
+        await task
+
+        assert result.data["type"] == "StandardMaterial3D"
+        assert result.data["property_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# resource_assign
+# ---------------------------------------------------------------------------
+
+
+class TestResourceAssignTool:
+    async def test_assign_resource(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "assign_resource"
+            assert cmd["params"]["path"] == "/Main/Ground"
+            assert cmd["params"]["property"] == "material_override"
+            assert cmd["params"]["resource_path"] == "res://materials/ground.tres"
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "/Main/Ground",
+                    "property": "material_override",
+                    "resource_path": "res://materials/ground.tres",
+                    "resource_type": "StandardMaterial3D",
+                    "undoable": True,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool(
+            "resource_assign",
+            {
+                "path": "/Main/Ground",
+                "property": "material_override",
+                "resource_path": "res://materials/ground.tres",
+            },
+        )
+        await task
+
+        assert result.data["resource_type"] == "StandardMaterial3D"
+        assert result.data["undoable"] is True
+
+
+# ---------------------------------------------------------------------------
+# filesystem_read_text
+# ---------------------------------------------------------------------------
+
+
+class TestFilesystemReadTextTool:
+    async def test_read_text(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "read_file"
+            assert cmd["params"]["path"] == "res://project.godot"
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "res://project.godot",
+                    "content": "[gd_scene]\n",
+                    "size": 11,
+                    "line_count": 2,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("filesystem_read_text", {"path": "res://project.godot"})
+        await task
+
+        assert result.data["content"] == "[gd_scene]\n"
+        assert result.data["size"] == 11
+
+
+# ---------------------------------------------------------------------------
+# filesystem_write_text
+# ---------------------------------------------------------------------------
+
+
+class TestFilesystemWriteTextTool:
+    async def test_write_text(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "write_file"
+            assert cmd["params"]["path"] == "res://data/config.json"
+            assert "key" in cmd["params"]["content"]
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "path": "res://data/config.json",
+                    "size": 14,
+                    "undoable": False,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool(
+            "filesystem_write_text",
+            {"path": "res://data/config.json", "content": '{"key": "val"}'},
+        )
+        await task
+
+        assert result.data["path"] == "res://data/config.json"
+        assert result.data["undoable"] is False
+
+
+# ---------------------------------------------------------------------------
+# import_reimport
+# ---------------------------------------------------------------------------
+
+
+class TestImportReimportTool:
+    async def test_reimport(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "reimport"
+            assert cmd["params"]["paths"] == ["res://icon.png", "res://logo.png"]
+            await plugin.send_response(
+                cmd["request_id"],
+                {
+                    "reimported": ["res://icon.png", "res://logo.png"],
+                    "not_found": [],
+                    "reimported_count": 2,
+                    "not_found_count": 0,
+                    "undoable": False,
+                },
+            )
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool(
+            "import_reimport", {"paths": ["res://icon.png", "res://logo.png"]}
+        )
+        await task
+
+        assert result.data["reimported_count"] == 2
+        assert result.data["not_found_count"] == 0

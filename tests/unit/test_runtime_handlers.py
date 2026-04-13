@@ -6,9 +6,12 @@ import pytest
 
 from godot_ai.handlers import client as client_handlers
 from godot_ai.handlers import editor as editor_handlers
+from godot_ai.handlers import filesystem as filesystem_handlers
 from godot_ai.handlers import node as node_handlers
 from godot_ai.handlers import project as project_handlers
+from godot_ai.handlers import resource as resource_handlers
 from godot_ai.handlers import scene as scene_handlers
+from godot_ai.handlers import script as script_handlers
 from godot_ai.handlers import session as session_handlers
 from godot_ai.handlers import testing as testing_handlers
 from godot_ai.runtime.direct import DirectRuntime
@@ -34,6 +37,8 @@ class StubClient:
                 "timeout": timeout,
             }
         )
+        if command == "quit_editor":
+            return {"status": "quitting", "message": "Editor quit initiated"}
         if command == "get_logs":
             return {"lines": [f"line {i}" for i in range(6)]}
         if command == "get_project_setting":
@@ -135,6 +140,93 @@ class StubClient:
             return {"status": "ok", "client": params.get("client", "")}
         if command == "check_client_status":
             return {"claude_code": "configured", "codex": "not_configured"}
+        if command == "create_script":
+            return {
+                "path": params.get("path", ""),
+                "size": len(params.get("content", "")),
+                "undoable": False,
+            }
+        if command == "read_script":
+            return {
+                "path": params.get("path", ""),
+                "content": "extends Node\n",
+                "size": 14,
+                "line_count": 2,
+            }
+        if command == "attach_script":
+            return {
+                "path": params.get("path", ""),
+                "script_path": params.get("script_path", ""),
+                "had_previous_script": False,
+                "undoable": True,
+            }
+        if command == "detach_script":
+            return {
+                "path": params.get("path", ""),
+                "removed_script": "res://old.gd",
+                "undoable": True,
+            }
+        if command == "find_symbols":
+            return {
+                "path": params.get("path", ""),
+                "class_name": "MyClass",
+                "extends": "Node3D",
+                "functions": [{"name": "_ready", "line": 5}],
+                "signals": ["died"],
+                "exports": [{"name": "speed", "line": 3}],
+                "function_count": 1,
+                "signal_count": 1,
+                "export_count": 1,
+            }
+        if command == "search_resources":
+            return {
+                "resources": [
+                    {"path": f"res://resource_{i}.tres", "type": "Material"} for i in range(4)
+                ]
+            }
+        if command == "load_resource":
+            return {
+                "path": params.get("path", ""),
+                "type": "StandardMaterial3D",
+                "properties": [
+                    {
+                        "name": "albedo_color",
+                        "type": "Color",
+                        "value": {"r": 1, "g": 1, "b": 1, "a": 1},
+                    }
+                ],
+                "property_count": 1,
+            }
+        if command == "assign_resource":
+            return {
+                "path": params.get("path", ""),
+                "property": params.get("property", ""),
+                "resource_path": params.get("resource_path", ""),
+                "resource_type": "StandardMaterial3D",
+                "undoable": True,
+            }
+        if command == "read_file":
+            return {
+                "path": params.get("path", ""),
+                "content": "[gd_scene]\n",
+                "size": 11,
+                "line_count": 2,
+            }
+        if command == "write_file":
+            return {
+                "path": params.get("path", ""),
+                "size": len(params.get("content", "")),
+                "undoable": False,
+            }
+        if command == "reimport":
+            paths = params.get("paths", [])
+            return {
+                "reimported": paths,
+                "not_found": [],
+                "reimported_count": len(paths),
+                "not_found_count": 0,
+                "undoable": False,
+            }
         return {"status": "ok"}
 
 
@@ -291,6 +383,14 @@ async def test_editor_state_handler():
     assert client.calls[-1]["command"] == "get_editor_state"
 
 
+async def test_editor_quit_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await editor_handlers.editor_quit(runtime)
+    assert result["status"] == "quitting"
+    assert client.calls[-1]["command"] == "quit_editor"
+
+
 async def test_editor_selection_get_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
@@ -351,7 +451,9 @@ async def test_scene_create_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await scene_handlers.scene_create(
-        runtime, path="res://scenes/level.tscn", root_type="Node2D",
+        runtime,
+        path="res://scenes/level.tscn",
+        root_type="Node2D",
     )
     assert result["path"] == "res://scenes/level.tscn"
     assert result["root_type"] == "Node2D"
@@ -399,7 +501,10 @@ async def test_node_create_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await node_handlers.node_create(
-        runtime, type="Sprite2D", name="MySprite", parent_path="/Main",
+        runtime,
+        type="Sprite2D",
+        name="MySprite",
+        parent_path="/Main",
     )
     assert result["type"] == "Sprite2D"
     expected = {"type": "Sprite2D", "name": "MySprite", "parent_path": "/Main"}
@@ -448,7 +553,9 @@ async def test_node_reparent_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await node_handlers.node_reparent(
-        runtime, path="/Main/Player", new_parent="/Main/World",
+        runtime,
+        path="/Main/Player",
+        new_parent="/Main/World",
     )
     assert result["new_parent"] == "/Main/World"
     assert result["undoable"] is True
@@ -459,7 +566,10 @@ async def test_node_set_property_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await node_handlers.node_set_property(
-        runtime, path="/Main/Camera3D", property="fov", value=90,
+        runtime,
+        path="/Main/Camera3D",
+        property="fov",
+        value=90,
     )
     assert result["property"] == "fov"
     assert result["value"] == 90
@@ -470,7 +580,9 @@ async def test_node_duplicate_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await node_handlers.node_duplicate(
-        runtime, path="/Main/Enemy", name="Enemy2",
+        runtime,
+        path="/Main/Enemy",
+        name="Enemy2",
     )
     assert result["original_path"] == "/Main/Enemy"
     assert result["name"] == "Enemy2"
@@ -491,7 +603,9 @@ async def test_node_add_to_group_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await node_handlers.node_add_to_group(
-        runtime, path="/Main/Enemy", group="damageable",
+        runtime,
+        path="/Main/Enemy",
+        group="damageable",
     )
     assert result["group"] == "damageable"
     assert result["undoable"] is True
@@ -502,7 +616,9 @@ async def test_node_remove_from_group_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await node_handlers.node_remove_from_group(
-        runtime, path="/Main/Enemy", group="enemies",
+        runtime,
+        path="/Main/Enemy",
+        group="enemies",
     )
     assert result["group"] == "enemies"
     assert result["undoable"] is True
@@ -513,7 +629,8 @@ async def test_editor_selection_set_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await node_handlers.editor_selection_set(
-        runtime, paths=["/Main/Camera3D", "/Main/World"],
+        runtime,
+        paths=["/Main/Camera3D", "/Main/World"],
     )
     assert result["selected"] == ["/Main/Camera3D", "/Main/World"]
     assert result["count"] == 2
@@ -623,11 +740,175 @@ async def test_filesystem_search_handler():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
     result = await project_handlers.filesystem_search(
-        runtime, name="file", type="GDScript", path="res://", offset=0, limit=2,
+        runtime,
+        name="file",
+        type="GDScript",
+        path="res://",
+        offset=0,
+        limit=2,
     )
     assert len(result["files"]) == 2
     assert result["total_count"] == 3
     assert client.calls[-1]["params"] == {"name": "file", "type": "GDScript", "path": "res://"}
+
+
+# ---------------------------------------------------------------------------
+# Script handler tests
+# ---------------------------------------------------------------------------
+
+
+async def test_script_create_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await script_handlers.script_create(
+        runtime,
+        path="res://scripts/player.gd",
+        content="extends Node3D\n",
+    )
+    assert result["path"] == "res://scripts/player.gd"
+    assert result["undoable"] is False
+    assert client.calls[-1]["params"] == {
+        "path": "res://scripts/player.gd",
+        "content": "extends Node3D\n",
+    }
+
+
+async def test_script_read_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await script_handlers.script_read(runtime, path="res://scripts/player.gd")
+    assert result["content"] == "extends Node\n"
+    assert client.calls[-1]["params"] == {"path": "res://scripts/player.gd"}
+
+
+async def test_script_attach_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await script_handlers.script_attach(
+        runtime,
+        path="/Main/Player",
+        script_path="res://scripts/player.gd",
+    )
+    assert result["script_path"] == "res://scripts/player.gd"
+    assert result["undoable"] is True
+    assert client.calls[-1]["params"] == {
+        "path": "/Main/Player",
+        "script_path": "res://scripts/player.gd",
+    }
+
+
+async def test_script_detach_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await script_handlers.script_detach(runtime, path="/Main/Player")
+    assert result["removed_script"] == "res://old.gd"
+    assert result["undoable"] is True
+    assert client.calls[-1]["params"] == {"path": "/Main/Player"}
+
+
+async def test_script_find_symbols_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await script_handlers.script_find_symbols(
+        runtime,
+        path="res://scripts/player.gd",
+    )
+    assert result["class_name"] == "MyClass"
+    assert result["function_count"] == 1
+    assert result["functions"][0]["name"] == "_ready"
+    assert client.calls[-1]["params"] == {"path": "res://scripts/player.gd"}
+
+
+# ---------------------------------------------------------------------------
+# Resource handler tests
+# ---------------------------------------------------------------------------
+
+
+async def test_resource_search_handler_paginates():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await resource_handlers.resource_search(
+        runtime,
+        type="Material",
+        offset=1,
+        limit=2,
+    )
+    assert len(result["resources"]) == 2
+    assert result["total_count"] == 4
+    assert result["has_more"] is True
+    assert client.calls[-1]["params"] == {"type": "Material", "path": ""}
+
+
+async def test_resource_load_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await resource_handlers.resource_load(runtime, path="res://mat.tres")
+    assert result["type"] == "StandardMaterial3D"
+    assert result["property_count"] == 1
+    assert client.calls[-1]["params"] == {"path": "res://mat.tres"}
+
+
+async def test_resource_assign_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await resource_handlers.resource_assign(
+        runtime,
+        path="/Main/Ground",
+        property="mesh",
+        resource_path="res://cube.tres",
+    )
+    assert result["resource_type"] == "StandardMaterial3D"
+    assert result["undoable"] is True
+    assert client.calls[-1]["params"] == {
+        "path": "/Main/Ground",
+        "property": "mesh",
+        "resource_path": "res://cube.tres",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Filesystem handler tests
+# ---------------------------------------------------------------------------
+
+
+async def test_filesystem_read_text_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await filesystem_handlers.filesystem_read_text(
+        runtime,
+        path="res://project.godot",
+    )
+    assert result["content"] == "[gd_scene]\n"
+    assert result["size"] == 11
+    assert client.calls[-1]["params"] == {"path": "res://project.godot"}
+
+
+async def test_filesystem_write_text_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await filesystem_handlers.filesystem_write_text(
+        runtime,
+        path="res://data/config.json",
+        content='{"key": "val"}',
+    )
+    assert result["path"] == "res://data/config.json"
+    assert result["undoable"] is False
+    assert client.calls[-1]["params"] == {
+        "path": "res://data/config.json",
+        "content": '{"key": "val"}',
+    }
+
+
+async def test_import_reimport_handler():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+    result = await filesystem_handlers.import_reimport(
+        runtime,
+        paths=["res://icon.png", "res://logo.png"],
+    )
+    assert result["reimported_count"] == 2
+    assert result["reimported"] == ["res://icon.png", "res://logo.png"]
+    assert client.calls[-1]["params"] == {"paths": ["res://icon.png", "res://logo.png"]}
 
 
 async def test_filesystem_search_handler_empty_params():

@@ -51,3 +51,10 @@ func reload_plugin(_params: Dictionary) -> Dictionary:
 		EditorInterface.set_plugin_enabled("res://addons/godot_ai/plugin.cfg", true)
 	).call_deferred()
 	return {"data": {"status": "reloading", "message": "Plugin reload initiated"}}
+
+
+func quit_editor(_params: Dictionary) -> Dictionary:
+	_log_buffer.log("quit_editor requested, quitting next frame")
+	## Defer the quit so the response is sent back before the editor exits.
+	EditorInterface.get_base_control().get_tree().call_deferred("quit")
+	return {"data": {"status": "quitting", "message": "Editor quit initiated"}}

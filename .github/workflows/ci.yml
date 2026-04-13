@@ -73,6 +73,9 @@ jobs:
       - name: Reload smoke test
         run: bash script/ci-reload-test
 
+      - name: Quit smoke test
+        run: bash script/ci-quit-test
+
   godot-tests-macos:
     name: Godot tests / macOS
     runs-on: macos-latest
@@ -106,6 +109,9 @@ jobs:
 
       - name: Reload smoke test
         run: bash script/ci-reload-test
+
+      - name: Quit smoke test
+        run: bash script/ci-quit-test
 
   godot-tests-windows:
     name: Godot tests / Windows
