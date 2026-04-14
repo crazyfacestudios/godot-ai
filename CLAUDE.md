@@ -60,14 +60,15 @@ The Godot dock also has a **Start/Stop Dev Server** button for convenience.
 
 ### Python tests
 ```bash
-pytest -v                    # 192 unit + integration tests
+pytest -v                    # 227 unit + integration tests
 ```
 
 ### Godot-side tests
 GDScript test suites in `test_project/tests/` exercise handlers inside the running editor. Run via MCP:
 ```
-run_tests                    # run all suites
+run_tests                    # compact: summary + failures only
 run_tests suite=scene        # run one suite
+run_tests verbose=true       # include every individual test result
 get_test_results             # review last results
 ```
 
@@ -79,6 +80,22 @@ Test suites extend `McpTestSuite` (assertion methods: `assert_true`, `assert_eq`
 2. Open a scene (e.g. `main.tscn`)
 3. Plugin starts the server automatically; logs should show `Session connected`
 4. Use `/mcp` in Claude Code to connect
+
+## Pre-commit smoke test
+
+**Always do this before every commit.** Python mocks don't catch GDScript bugs, editor API regressions, or undo/redo issues.
+
+1. `ruff check src/ tests/` — lint passes
+2. `pytest -v` — all Python tests pass
+3. Open `test_project/` in Godot (or launch: `/Applications/Godot_mono.app/Contents/MacOS/Godot --editor --path test_project/`)
+4. `session_activate` the test_project session if multiple editors are connected
+5. `run_tests` via MCP — all GDScript tests pass (0 failures)
+6. **Live smoke test** new/changed features against the real editor:
+   - Call each new tool and verify the response makes sense
+   - For write tools: verify the change is visible in the editor, and verify undo works (Ctrl+Z in Godot)
+   - For read tools: compare response against what you see in the editor
+   - Check `editor_state` to confirm readiness field is present
+7. Only commit when all of the above are green
 
 ## Client configuration
 
