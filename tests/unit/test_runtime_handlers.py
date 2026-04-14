@@ -1511,6 +1511,67 @@ async def test_editor_screenshot_handler_custom_angles():
     assert result["azimuth"] == 90.0
 
 
+async def test_editor_screenshot_handler_view_target_not_found_single():
+    class NotFoundClient:
+        async def send(self, command, params=None, session_id=None, timeout=5.0):
+            return {
+                "source": "viewport",
+                "width": 1,
+                "height": 1,
+                "original_width": 100,
+                "original_height": 100,
+                "format": "png",
+                "image_base64": "",
+                "view_target": params["view_target"],
+                "view_target_count": 2,
+                "view_target_not_found": ["/Main/Missing"],
+            }
+
+    runtime = DirectRuntime(registry=SessionRegistry(), client=NotFoundClient())
+    result = await editor_handlers.editor_screenshot(
+        runtime, view_target="/Main/X,/Main/Missing", include_image=False
+    )
+    assert result["view_target_not_found"] == ["/Main/Missing"]
+    assert result["view_target_count"] == 2
+
+
+async def test_editor_screenshot_handler_view_target_not_found_coverage():
+    class NotFoundCoverageClient:
+        async def send(self, command, params=None, session_id=None, timeout=5.0):
+            return {
+                "source": "viewport",
+                "view_target": params["view_target"],
+                "view_target_count": 2,
+                "view_target_not_found": ["/Main/Missing"],
+                "coverage": True,
+                "images": [
+                    {
+                        "label": "establishing",
+                        "elevation": 25.0,
+                        "azimuth": 20.0,
+                        "fov": 50.0,
+                        "width": 1,
+                        "height": 1,
+                        "image_base64": "",
+                        "format": "png",
+                    }
+                ],
+            }
+
+    runtime = DirectRuntime(
+        registry=SessionRegistry(), client=NotFoundCoverageClient()
+    )
+    result = await editor_handlers.editor_screenshot(
+        runtime,
+        view_target="/Main/X,/Main/Missing",
+        coverage=True,
+        include_image=False,
+    )
+    assert result["view_target_not_found"] == ["/Main/Missing"]
+    assert result["view_target_count"] == 2
+    assert result["coverage"] is True
+
+
 async def test_editor_screenshot_handler_fov_passes_param():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
