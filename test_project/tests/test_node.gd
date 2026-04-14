@@ -6,6 +6,8 @@ extends McpTestSuite
 var _handler: NodeHandler
 var _undo_redo: EditorUndoRedoManager
 
+const TEST_MATERIAL_PATH := "res://tests/_mcp_test_material.tres"
+
 
 func suite_name() -> String:
 	return "node"
@@ -14,6 +16,13 @@ func suite_name() -> String:
 func suite_setup(ctx: Dictionary) -> void:
 	_undo_redo = ctx.get("undo_redo")
 	_handler = NodeHandler.new(_undo_redo)
+	var mat := StandardMaterial3D.new()
+	ResourceSaver.save(mat, TEST_MATERIAL_PATH)
+
+
+func suite_teardown() -> void:
+	if FileAccess.file_exists(TEST_MATERIAL_PATH):
+		DirAccess.remove_absolute(TEST_MATERIAL_PATH)
 
 
 # ----- get_children -----
@@ -209,11 +218,187 @@ func test_set_property_missing_value() -> void:
 	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
 
 
+func test_set_property_resource_path() -> void:
+	## Use a fresh MeshInstance3D for a clean material_override slot.
+	_handler.create_node({
+		"type": "MeshInstance3D",
+		"name": "_McpTestMat",
+		"parent_path": "/Main",
+	})
+	var result := _handler.set_property({
+		"path": "/Main/_McpTestMat",
+		"property": "material_override",
+		"value": TEST_MATERIAL_PATH,
+	})
+	assert_has_key(result, "data")
+	assert_eq(result.data.value, TEST_MATERIAL_PATH)
+	assert_true(result.data.undoable)
+	_undo_redo.undo()  # undo assign
+	_undo_redo.undo()  # undo create
+
+
+func test_set_property_resource_not_found() -> void:
+	var result := _handler.set_property({
+		"path": "/Main/Camera3D",
+		"property": "environment",
+		"value": "res://does/not/exist.tres",
+	})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+
+
+func test_set_property_resource_null_clears() -> void:
+	_handler.create_node({
+		"type": "MeshInstance3D",
+		"name": "_McpTestClear",
+		"parent_path": "/Main",
+	})
+	_handler.set_property({
+		"path": "/Main/_McpTestClear",
+		"property": "material_override",
+		"value": TEST_MATERIAL_PATH,
+	})
+	var result := _handler.set_property({
+		"path": "/Main/_McpTestClear",
+		"property": "material_override",
+		"value": null,
+	})
+	assert_has_key(result, "data")
+	assert_eq(result.data.value, null)
+	_undo_redo.undo()
+	_undo_redo.undo()
+	_undo_redo.undo()
+
+
+func test_set_property_node_path() -> void:
+	_handler.create_node({
+		"type": "RemoteTransform3D",
+		"name": "_McpTestRemote",
+		"parent_path": "/Main",
+	})
+	var result := _handler.set_property({
+		"path": "/Main/_McpTestRemote",
+		"property": "remote_path",
+		"value": "../Camera3D",
+	})
+	assert_has_key(result, "data")
+	assert_eq(result.data.value, "../Camera3D")
+	_undo_redo.undo()
+	_undo_redo.undo()
+
+
 func test_set_property_nonexistent_property() -> void:
 	var result := _handler.set_property({
 		"path": "/Main/Camera3D",
 		"property": "nonexistent_xyz",
 		"value": 42,
+	})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+
+
+# ----- _coerce_value / _serialize_value unit coverage -----
+
+func test_coerce_array_passthrough() -> void:
+	var coerced = NodeHandler._coerce_value([1, 2, 3], TYPE_ARRAY)
+	assert_true(coerced is Array)
+	assert_eq(coerced.size(), 3)
+
+
+func test_coerce_dictionary_passthrough() -> void:
+	var coerced = NodeHandler._coerce_value({"a": 1, "b": 2}, TYPE_DICTIONARY)
+	assert_true(coerced is Dictionary)
+	assert_eq(coerced["a"], 1)
+
+
+func test_coerce_node_path_from_string() -> void:
+	var coerced = NodeHandler._coerce_value("../Sibling", TYPE_NODE_PATH)
+	assert_true(coerced is NodePath)
+	assert_eq(str(coerced), "../Sibling")
+
+
+func test_coerce_string_name_from_string() -> void:
+	var coerced = NodeHandler._coerce_value("my_name", TYPE_STRING_NAME)
+	assert_true(coerced is StringName)
+
+
+func test_serialize_array_recursive() -> void:
+	var result = NodeHandler._serialize_value([Vector2(1, 2), "hello", 3])
+	assert_true(result is Array)
+	assert_eq(result[0]["x"], 1.0)
+	assert_eq(result[1], "hello")
+
+
+func test_serialize_dictionary_recursive() -> void:
+	var result = NodeHandler._serialize_value({"pos": Vector3(1, 2, 3), "name": "x"})
+	assert_true(result is Dictionary)
+	assert_eq(result["pos"]["z"], 3.0)
+	assert_eq(result["name"], "x")
+
+
+# ----- rename_node -----
+
+func test_rename_node_basic() -> void:
+	var suffix := str(Time.get_ticks_usec())
+	var created := _handler.create_node({
+		"type": "Node3D",
+		"name": "_McpRenameSrc%s" % suffix,
+		"parent_path": "/Main",
+	})
+	assert_has_key(created, "data")
+	var created_path: String = created.data.path
+	var created_name: String = created.data.name
+	var target_name := "_McpRenameDst%s" % suffix
+	var result := _handler.rename_node({
+		"path": created_path,
+		"new_name": target_name,
+	})
+	assert_has_key(result, "data")
+	assert_eq(result.data.name, target_name)
+	assert_eq(result.data.old_name, created_name)
+	assert_true(result.data.undoable)
+	_undo_redo.undo()
+	_undo_redo.undo()
+
+
+func test_rename_node_scene_root() -> void:
+	var result := _handler.rename_node({"path": "/Main", "new_name": "NewMain"})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+
+
+func test_rename_node_missing_name() -> void:
+	var result := _handler.rename_node({"path": "/Main/Camera3D"})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+
+
+func test_rename_node_invalid_characters() -> void:
+	var result := _handler.rename_node({
+		"path": "/Main/Camera3D",
+		"new_name": "foo/bar",
+	})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+
+
+func test_rename_node_sibling_collision() -> void:
+	var result := _handler.rename_node({
+		"path": "/Main/Camera3D",
+		"new_name": "World",
+	})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+
+
+func test_rename_node_unchanged() -> void:
+	var result := _handler.rename_node({
+		"path": "/Main/Camera3D",
+		"new_name": "Camera3D",
+	})
+	assert_has_key(result, "data")
+	assert_true(result.data.unchanged, "Should flag unchanged rename")
+	assert_false(result.data.undoable)
+
+
+func test_rename_node_invalid_path() -> void:
+	var result := _handler.rename_node({
+		"path": "/Main/Nope",
+		"new_name": "NewName",
 	})
 	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
 
