@@ -181,15 +181,21 @@ func test_screenshot_coverage_without_view_target() -> void:
 
 
 func test_screenshot_coverage_with_view_target() -> void:
-	## coverage=true with a valid target → images array with 3 entries + AABB metadata
+	## coverage=true with a valid target → images array + AABB metadata.
+	## Prefer a Node3D with visible geometry so the ortho shot has content;
+	## fall back to any Node3D if no preferred target is present.
 	var scene_root := EditorInterface.get_edited_scene_root()
 	if scene_root == null:
 		return
 	var target_path := ""
-	for child in scene_root.get_children():
-		if child is Node3D:
-			target_path = ScenePath.from_node(child, scene_root)
-			break
+	var preferred := scene_root.get_node_or_null("SnowGroup")
+	if preferred != null and preferred is Node3D:
+		target_path = ScenePath.from_node(preferred, scene_root)
+	else:
+		for child in scene_root.get_children():
+			if child is Node3D:
+				target_path = ScenePath.from_node(child, scene_root)
+				break
 	if target_path.is_empty():
 		return
 	var result := _handler.take_screenshot({"source": "viewport", "view_target": target_path, "coverage": true})
