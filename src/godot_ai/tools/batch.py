@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastmcp import Context, FastMCP
 
 from godot_ai.handlers import batch as batch_handlers
 from godot_ai.runtime.direct import DirectRuntime
-from godot_ai.tools import DEFER_META
+from godot_ai.tools import DEFER_META, JsonCoerced
 
 
 def register_batch_tools(mcp: FastMCP) -> None:
     @mcp.tool(meta=DEFER_META)
     async def batch_execute(
         ctx: Context,
-        commands: list[dict],
+        commands: Annotated[list[dict], JsonCoerced],
         undo: bool = True,
+        session_id: str = "",
     ) -> dict:
         """Execute a list of editor sub-commands in order, stopping on first error.
 
@@ -43,13 +46,14 @@ def register_batch_tools(mcp: FastMCP) -> None:
         Args:
             commands: List of `{"command": str, "params": dict}` items.
             undo: Roll back succeeded sub-commands on failure. Default True.
+            session_id: Optional Godot session to target. Empty = active session.
 
         Returns a dict with `succeeded` (count), `stopped_at` (failing index
         or null), `results` (per-sub-command status/data/error), `rolled_back`
         (whether rollback was performed), and `undoable` (whether the batch
         can be undone as a whole).
         """
-        runtime = DirectRuntime.from_context(ctx)
+        runtime = DirectRuntime.from_context(ctx, session_id=session_id or None)
         return await batch_handlers.batch_execute(
             runtime,
             commands=commands,
