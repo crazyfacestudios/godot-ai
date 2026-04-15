@@ -175,4 +175,4 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development setup, testing, and 
 
 ---
 
-**License:** A repository license file has not been added yet. | **Issues:** [GitHub](https://github.com/hi-godot/godot-ai/issues)
+**License:** [MIT](LICENSE) | **Issues:** [GitHub](https://github.com/hi-godot/godot-ai/issues)
