@@ -65,9 +65,9 @@ func _on_health_changed(value: float, max_value: float) -> void:
 	health_bar.max_value = max_value
 	health_bar.value = value
 	health_val.text = str(int(value))
-	if value / max_value < 0.3 and ap.has_animation("hp_low_pulse"):
-		if not ap.is_playing() or ap.current_animation != "hp_low_pulse":
-			ap.play("hp_low_pulse")
+	if value / max_value < 0.3 and ap.has_animation("hp_glow"):
+		if not ap.is_playing() or ap.current_animation != "hp_glow":
+			ap.play("hp_glow")
 
 func _on_shield_changed(value: float, max_value: float) -> void:
 	shield_bar.max_value = max_value
@@ -85,8 +85,8 @@ func _on_cooldown_changed(index: int, remaining: float) -> void:
 			cd_labels[index].text = ["Q", "E", "R"][index]
 
 func _on_damage_taken(amount: float) -> void:
-	if ap.has_animation("dmg_flash"):
-		ap.play("dmg_flash")
+	if ap.has_animation("dmg_hit"):
+		ap.play("dmg_hit")
 
 func _on_log_message(text: String) -> void:
 	for i in range(log_labels.size() - 1):

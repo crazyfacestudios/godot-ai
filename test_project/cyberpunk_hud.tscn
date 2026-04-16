@@ -57,6 +57,49 @@ tracks/1/keys = {
 "values": [Color(1, 1, 1, 1), Color(1, 0.3, 0.3, 1), Color(1, 1, 1, 1)]
 }
 
+[sub_resource type="Animation" id="Animation_appxl"]
+length = 0.4
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("ThemeRoot/TopLeft:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.06, 0.12, 0.2, 0.3, 0.4),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(16, 16), Vector2(19, 15), Vector2(14, 17), Vector2(17, 15), Vector2(15, 16), Vector2(16, 16)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("ThemeRoot/TopLeft/HealthGroup:self_modulate")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.06, 0.15, 0.4),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Color(1, 1, 1, 1), Color(1.5, 0.6, 0.6, 1), Color(1.3, 0.8, 0.8, 1), Color(1, 1, 1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_37jkd"]
+length = 0.6
+loop_mode = 2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("ThemeRoot/TopLeft/HealthGroup:self_modulate")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.6),
+"transitions": PackedFloat32Array(-2, -2),
+"update": 0,
+"values": [Color(1, 1, 1, 1), Color(1.4, 0.4, 0.4, 1)]
+}
+
 [sub_resource type="Animation" id="Animation_d1rb2"]
 length = 0.5
 loop_mode = 2
@@ -129,6 +172,8 @@ tracks/1/keys = {
 _data = {
 &"damage_shake": SubResource("Animation_2opgq"),
 &"dmg_flash": SubResource("Animation_tme1c"),
+&"dmg_hit": SubResource("Animation_appxl"),
+&"hp_glow": SubResource("Animation_37jkd"),
 &"hp_low_pulse": SubResource("Animation_d1rb2"),
 &"hud_fade_in": SubResource("Animation_eorrx"),
 &"pause_slide_in": SubResource("Animation_ondah")
