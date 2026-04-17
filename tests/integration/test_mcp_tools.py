@@ -905,13 +905,30 @@ class TestClientTools:
             assert cmd["command"] == "check_client_status"
             await plugin.send_response(
                 cmd["request_id"],
-                {"claude_code": "configured", "codex": "not_configured"},
+                {
+                    "clients": [
+                        {
+                            "id": "claude_code",
+                            "display_name": "Claude Code",
+                            "status": "configured",
+                            "installed": True,
+                        },
+                        {
+                            "id": "codex",
+                            "display_name": "Codex",
+                            "status": "not_configured",
+                            "installed": False,
+                        },
+                    ]
+                },
             )
 
         task = asyncio.create_task(respond())
         result = await client.call_tool("client_status", {})
         await task
-        assert result.data["claude_code"] == "configured"
+        clients = {entry["id"]: entry for entry in result.data["clients"]}
+        assert clients["claude_code"]["status"] == "configured"
+        assert clients["codex"]["installed"] is False
 
     async def test_client_configure(self, mcp_stack):
         client, plugin = mcp_stack
@@ -924,6 +941,20 @@ class TestClientTools:
 
         task = asyncio.create_task(respond())
         result = await client.call_tool("client_configure", {"client": "codex"})
+        await task
+        assert result.data["status"] == "ok"
+
+    async def test_client_remove(self, mcp_stack):
+        client, plugin = mcp_stack
+
+        async def respond():
+            cmd = await plugin.recv_command()
+            assert cmd["command"] == "remove_client"
+            assert cmd["params"]["client"] == "cursor"
+            await plugin.send_response(cmd["request_id"], {"status": "ok"})
+
+        task = asyncio.create_task(respond())
+        result = await client.call_tool("client_remove", {"client": "cursor"})
         await task
         assert result.data["status"] == "ok"
 
