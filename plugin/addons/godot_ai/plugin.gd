@@ -37,8 +37,9 @@ func _enter_tree() -> void:
 	var animation_handler := AnimationHandler.new(get_undo_redo())
 	var material_handler := MaterialHandler.new(get_undo_redo())
 	var particle_handler := ParticleHandler.new(get_undo_redo())
+	var camera_handler := CameraHandler.new(get_undo_redo())
 	var audio_handler := AudioHandler.new(get_undo_redo())
-	_handlers = [editor_handler, scene_handler, node_handler, project_handler, client_handler, script_handler, resource_handler, filesystem_handler, signal_handler, autoload_handler, input_handler, test_handler, batch_handler, ui_handler, theme_handler, animation_handler, material_handler, particle_handler, audio_handler]
+	_handlers = [editor_handler, scene_handler, node_handler, project_handler, client_handler, script_handler, resource_handler, filesystem_handler, signal_handler, autoload_handler, input_handler, test_handler, batch_handler, ui_handler, theme_handler, animation_handler, material_handler, particle_handler, camera_handler, audio_handler]
 
 	_dispatcher.register("get_editor_state", editor_handler.get_editor_state)
 	_dispatcher.register("get_scene_tree", scene_handler.get_scene_tree)
@@ -141,6 +142,14 @@ func _enter_tree() -> void:
 	_dispatcher.register("particle_restart", particle_handler.restart_particle)
 	_dispatcher.register("particle_get", particle_handler.get_particle)
 	_dispatcher.register("particle_apply_preset", particle_handler.apply_preset)
+	_dispatcher.register("camera_create", camera_handler.create_camera)
+	_dispatcher.register("camera_configure", camera_handler.configure)
+	_dispatcher.register("camera_set_limits_2d", camera_handler.set_limits_2d)
+	_dispatcher.register("camera_set_damping_2d", camera_handler.set_damping_2d)
+	_dispatcher.register("camera_follow_2d", camera_handler.follow_2d)
+	_dispatcher.register("camera_get", camera_handler.get_camera)
+	_dispatcher.register("camera_list", camera_handler.list_cameras)
+	_dispatcher.register("camera_apply_preset", camera_handler.apply_preset)
 	_dispatcher.register("audio_player_create", audio_handler.create_player)
 	_dispatcher.register("audio_player_set_stream", audio_handler.set_stream)
 	_dispatcher.register("audio_player_set_playback", audio_handler.set_playback)
