@@ -9,10 +9,9 @@
 
 **Connect MCP clients directly to a live Godot editor.** Godot AI bridges AI assistants (Claude Code, Codex, Antigravity, etc.) with your Godot Editor via the [Model Context Protocol](https://modelcontextprotocol.io/introduction).
 
-Over **120 MCP tools** expose the editor's real authoring surface: build and edit scenes, create and reparent nodes, set properties, attach and patch GDScript, wire signals, create resources and materials, author animations on an `AnimationPlayer`, configure particles, cameras, and environments, build Control / theme layouts, manage project settings, autoloads, and the input map, search and read project files, capture screenshots, and run GDScript test suites — all from a prompt, every write undoable in the editor.
+Over **120 MCP tools** to directly control editor functions: build and edit scenes, create and reparent nodes, set properties, attach and edit scripts and signals. Create and configure polished UI, resources, materials, animations, particles, cameras, and environments.
 
-> 🎉 **Now on the [Godot Asset Library](https://godotengine.org/asset-library/asset/5050)** — one-click install from Godot's **AssetLib** tab. You'll still need [uv](https://docs.astral.sh/uv/) on your system for the Python server (see [Quick Start](#quick-start)).
-
+> 🎉 **Now on the [Godot Asset Library](https://godotengine.org/asset-library/asset/5050)** — one-click install from Godot's **AssetLib** tab. You'll still need [uv](https://docs.astral.sh/uv/) on your system for the Python server (see [Quick Start](#quick-start))
 <p align="center"><img src="docs/images/assetlib.png" alt="Godot AI on the Godot Asset Library" width="520"></p>
 
 *Independent community project, not affiliated with the [Godot Foundation](https://godot.foundation). Godot Engine is [MIT-licensed](https://godotengine.org/license).*
