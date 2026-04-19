@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  # Dispatched explicitly by bump-and-release.yml — see that workflow's
+  # "Trigger release workflow" step for why the tag push alone isn't enough.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,6 +27,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify ref is a version tag
+        # Guard against a manual workflow_dispatch on a branch ref (e.g.
+        # `main`), which would otherwise fall through and fail the version
+        # check with a confusing "tag (main) does not match..." message.
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: release.yml must run against a version tag (vX.Y.Z), got: $GITHUB_REF_NAME" >&2
+            echo "If dispatching manually, pick a v* tag in the ref dropdown." >&2
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -48,6 +62,12 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Idempotent re-runs: if this version is already on PyPI (e.g. a
+          # previous run published but a downstream job failed), skip the
+          # upload instead of erroring with "File already exists" — which
+          # would block the build-plugin-zip job that depends on this one.
+          skip-existing: true
 
   # Build the Godot plugin ZIP and attach it to the GitHub Release.
   # Runs after publish-pypi so the Python package is live on PyPI before the
