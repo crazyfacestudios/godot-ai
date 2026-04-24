@@ -8,11 +8,13 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
-    Write-Host "setup-dev.ps1 is Windows-only. On macOS/Linux, run script/setup-dev instead." -ForegroundColor Yellow
-    exit 0
+$isWin = if ($PSVersionTable.PSVersion.Major -lt 6) {
+    $env:OS -eq 'Windows_NT'
+} else {
+    [bool](Get-Variable -Name IsWindows -ValueOnly -ErrorAction SilentlyContinue)
 }
-if ($PSVersionTable.PSVersion.Major -lt 6 -and $env:OS -ne 'Windows_NT') {
+
+if (-not $isWin) {
     Write-Host "setup-dev.ps1 is Windows-only. On macOS/Linux, run script/setup-dev instead." -ForegroundColor Yellow
     exit 0
 }
