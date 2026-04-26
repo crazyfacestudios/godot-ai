@@ -50,6 +50,53 @@ def test_clients_window_open_requests_nonblocking_refresh() -> None:
     assert "_refresh_all_client_statuses.call_deferred" not in block
 
 
+def test_initial_paint_requests_async_status_refresh() -> None:
+    """Cold editor open should still populate client dots without waiting for focus-in."""
+
+    source = (PLUGIN_ROOT / "mcp_dock.gd").read_text()
+    build_block = source.split("func _build_ui() -> void:", 1)[1].split("\n\nfunc ", 1)[0]
+
+    assert "_request_client_status_refresh.call_deferred(true)" in build_block
+
+
+def test_worker_uses_main_thread_probe_snapshot_for_cli_paths() -> None:
+    """CLI path discovery caches should not be mutated from the refresh worker."""
+
+    dock_source = (PLUGIN_ROOT / "mcp_dock.gd").read_text()
+    configurator_source = (PLUGIN_ROOT / "client_configurator.gd").read_text()
+    cli_source = (PLUGIN_ROOT / "clients" / "_cli_strategy.gd").read_text()
+    worker_block = dock_source.split("func _run_client_status_refresh_worker", 1)[1].split(
+        "\n\nfunc ", 1
+    )[0]
+
+    assert "client_status_probe_snapshot" in dock_source
+    assert "check_status_for_url_with_cli_path" in worker_block
+    assert "McpClientConfigurator.is_installed" not in worker_block
+    assert "resolve_cli_path" in configurator_source
+    assert "check_status_with_cli_path" in cli_source
+
+
+def test_refresh_timeout_can_abandon_stale_worker_results() -> None:
+    """A hung CLI probe should not permanently own the refresh slot."""
+
+    source = (PLUGIN_ROOT / "mcp_dock.gd").read_text()
+
+    assert "CLIENT_STATUS_REFRESH_TIMEOUT_MSEC := 30 * 1000" in source
+    assert "_client_status_refresh_generation" in source
+    assert "_abandon_client_status_refresh_thread" in source
+    assert "generation != _client_status_refresh_generation" in source
+
+
+def test_configure_all_uses_cached_status_not_dot_color() -> None:
+    """Configure-all must not make correctness decisions from stale UI colors."""
+
+    source = (PLUGIN_ROOT / "mcp_dock.gd").read_text()
+    block = source.split("func _on_configure_all_clients() -> void:", 1)[1].split("\n\nfunc ", 1)[0]
+
+    assert 'get("status", McpClient.Status.NOT_CONFIGURED)' in block
+    assert "dot.color" not in block
+
+
 def _focus_in_block(source: str) -> str:
     marker = "NOTIFICATION_APPLICATION_FOCUS_IN"
     start = source.index(marker)

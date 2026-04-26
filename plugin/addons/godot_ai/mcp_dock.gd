@@ -11,6 +11,7 @@ const DEV_MODE_SETTING := "godot_ai/dev_mode"
 const MODE_OVERRIDE_VALUES := ["", "user", "dev"]
 const MODE_OVERRIDE_LABELS := ["Auto", "Force user", "Force dev"]
 const CLIENT_STATUS_REFRESH_COOLDOWN_MSEC := 15 * 1000
+const CLIENT_STATUS_REFRESH_TIMEOUT_MSEC := 30 * 1000
 static var COLOR_MUTED := Color(0.7, 0.7, 0.7)
 static var COLOR_HEADER := Color(0.95, 0.95, 0.95)
 ## Used for "in-progress" / "stale, action needed" UI: the startup-grace
@@ -90,6 +91,11 @@ var _client_status_refresh_in_flight := false
 var _client_status_refresh_pending := false
 var _client_status_refresh_pending_force := false
 var _last_client_status_refresh_completed_msec: int = 0
+var _client_status_refresh_started_msec: int = 0
+var _client_status_refresh_generation: int = 0
+var _client_status_refresh_shutdown_requested := false
+var _client_status_refresh_timed_out := false
+static var _orphaned_client_status_refresh_threads: Array[Thread] = []
 
 # Dev-mode only
 var _dev_section: VBoxContainer
@@ -158,9 +164,22 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _connection == null:
 		return
+	_prune_orphaned_client_status_refresh_threads()
+	_check_client_status_refresh_timeout()
 	_update_status()
 	if _log_section.visible:
 		_update_log()
+
+
+func _exit_tree() -> void:
+	_client_status_refresh_shutdown_requested = true
+	_client_status_refresh_generation += 1
+	if _client_status_refresh_thread != null:
+		_orphaned_client_status_refresh_threads.append(_client_status_refresh_thread)
+		_client_status_refresh_thread = null
+	_client_status_refresh_in_flight = false
+	_client_status_refresh_pending = false
+	_client_status_refresh_pending_force = false
 
 
 func _notification(what: int) -> void:
@@ -509,7 +528,7 @@ func _build_ui() -> void:
 	# Apply initial dev-mode visibility
 	_apply_dev_mode_visibility()
 	_refresh_setup_status.call_deferred()
-	_refresh_clients_summary.call_deferred()
+	_request_client_status_refresh.call_deferred(true)
 
 
 func _make_header(text: String) -> Label:
@@ -574,6 +593,7 @@ func _build_client_row(client_id: String) -> void:
 
 	_client_rows[client_id] = {
 		"dot": dot,
+		"status": McpClient.Status.NOT_CONFIGURED,
 		"name_label": name_label,
 		"configure_btn": configure_btn,
 		"remove_btn": remove_btn,
@@ -1097,9 +1117,11 @@ func _on_refresh_clients_pressed() -> void:
 
 
 func _on_configure_all_clients() -> void:
+	if _client_status_refresh_in_flight:
+		return
 	for client_id in _client_rows:
-		var dot: ColorRect = _client_rows[client_id]["dot"]
-		if dot.color == Color.GREEN:
+		var status: McpClient.Status = _client_rows[client_id].get("status", McpClient.Status.NOT_CONFIGURED)
+		if status == McpClient.Status.CONFIGURED:
 			continue
 		_on_configure_client(String(client_id))
 	_refresh_clients_summary()
@@ -1370,27 +1392,30 @@ func _on_tools_discard_confirmed() -> void:
 
 
 func _refresh_clients_summary() -> void:
-	# Count from row dot colors — `_apply_row_status` is the single source of
-	# truth, and reading colors avoids re-running filesystem-hitting status
-	# checks on every refresh. Also re-derives the drift banner from the same
-	# dots so per-row mutations (Configure/Reconfigure/Remove on a row in the
-	# Clients & Tools window) keep the dock-level banner in sync without an
-	# extra sweep — without this, the banner stays stale after a successful
-	# Reconfigure until the next explicit refresh or window-open sweep. See #166.
+	# Count from cached row status values — `_apply_row_status` is the single
+	# source of truth, and reading cached status avoids re-running
+	# filesystem/CLI-hitting checks on every refresh. The same cache re-derives
+	# the drift banner so per-row mutations (Configure/Reconfigure/Remove on a
+	# row in the Clients & Tools window) keep the dock-level banner in sync
+	# without an extra sweep. See #166 and #226.
 	if _clients_summary_label == null:
 		return
 	var configured := 0
 	var mismatched_ids: Array[String] = []
 	for client_id in _client_rows:
-		var c := (_client_rows[client_id]["dot"] as ColorRect).color
-		if c == Color.GREEN:
+		var status: McpClient.Status = _client_rows[client_id].get("status", McpClient.Status.NOT_CONFIGURED)
+		if status == McpClient.Status.CONFIGURED:
 			configured += 1
-		elif c == COLOR_AMBER:
+		elif status == McpClient.Status.CONFIGURED_MISMATCH:
 			mismatched_ids.append(client_id)
 	var text := "%d / %d configured" % [configured, _client_rows.size()]
 	if mismatched_ids.size() > 0:
 		text += " (%d stale)" % mismatched_ids.size()
+	if _client_status_refresh_in_flight:
+		text += " (checking...)" if not _client_status_refresh_timed_out else " (client probe still running)"
 	_clients_summary_label.text = text
+	if _client_configure_all_btn != null:
+		_client_configure_all_btn.disabled = _client_status_refresh_in_flight
 	_refresh_drift_banner(mismatched_ids)
 
 
@@ -1426,50 +1451,115 @@ func _is_client_status_refresh_in_cooldown() -> bool:
 	return Time.get_ticks_msec() - _last_client_status_refresh_completed_msec < CLIENT_STATUS_REFRESH_COOLDOWN_MSEC
 
 
+func _has_client_status_refresh_timed_out() -> bool:
+	if not _client_status_refresh_in_flight:
+		return false
+	if _client_status_refresh_started_msec <= 0:
+		return false
+	return Time.get_ticks_msec() - _client_status_refresh_started_msec >= CLIENT_STATUS_REFRESH_TIMEOUT_MSEC
+
+
+func _check_client_status_refresh_timeout() -> void:
+	if not _has_client_status_refresh_timed_out():
+		return
+	if _client_status_refresh_timed_out:
+		return
+	_client_status_refresh_timed_out = true
+	_refresh_clients_summary()
+
+
+func _abandon_client_status_refresh_thread() -> void:
+	## GDScript cannot interrupt a blocking `OS.execute(..., true)` call in a
+	## worker. If a CLI probe hangs, orphan this run, bump the generation so any
+	## late result becomes a no-op, and let a forced/manual refresh start a fresh
+	## probe slot. Completed orphan threads are pruned from `_process`.
+	_client_status_refresh_generation += 1
+	if _client_status_refresh_thread != null:
+		_orphaned_client_status_refresh_threads.append(_client_status_refresh_thread)
+		_client_status_refresh_thread = null
+	_client_status_refresh_in_flight = false
+	_client_status_refresh_pending = false
+	_client_status_refresh_pending_force = false
+	_client_status_refresh_timed_out = false
+	_client_status_refresh_started_msec = 0
+	_refresh_clients_summary()
+
+
+func _prune_orphaned_client_status_refresh_threads() -> void:
+	for i in range(_orphaned_client_status_refresh_threads.size() - 1, -1, -1):
+		var thread := _orphaned_client_status_refresh_threads[i]
+		if thread == null:
+			_orphaned_client_status_refresh_threads.remove_at(i)
+		elif not thread.is_alive():
+			thread.wait_to_finish()
+			_orphaned_client_status_refresh_threads.remove_at(i)
+
+
 func _request_client_status_refresh(force: bool = false) -> bool:
 	## Stale-while-refreshing: do not clear dots, summary, or the drift banner
 	## when a refresh is requested. The existing UI remains visible until the
 	## background worker's result is applied on the main thread.
 	if _client_status_refresh_in_flight:
-		_client_status_refresh_pending = true
-		_client_status_refresh_pending_force = _client_status_refresh_pending_force or force
+		if force and _has_client_status_refresh_timed_out():
+			_abandon_client_status_refresh_thread()
+		else:
+			_client_status_refresh_pending = true
+			_client_status_refresh_pending_force = _client_status_refresh_pending_force or force
+			_refresh_clients_summary()
+			return false
+	if _client_status_refresh_shutdown_requested:
 		return false
 	if not force and _is_client_status_refresh_in_cooldown():
 		return false
 	if _client_rows.is_empty():
 		return false
 
-	var client_ids: Array[String] = []
+	var client_probes: Array[Dictionary] = []
 	for client_id in _client_rows:
-		client_ids.append(String(client_id))
+		client_probes.append(McpClientConfigurator.client_status_probe_snapshot(String(client_id)))
 	var server_url := McpClientConfigurator.http_url()
 
 	_client_status_refresh_in_flight = true
 	_client_status_refresh_pending = false
 	_client_status_refresh_pending_force = false
+	_client_status_refresh_timed_out = false
+	_client_status_refresh_started_msec = Time.get_ticks_msec()
+	_client_status_refresh_generation += 1
+	var generation := _client_status_refresh_generation
+	_refresh_clients_summary()
 	_client_status_refresh_thread = Thread.new()
 	var err := _client_status_refresh_thread.start(
-		Callable(self, "_run_client_status_refresh_worker").bind(client_ids, server_url)
+		Callable(self, "_run_client_status_refresh_worker").bind(client_probes, server_url, generation)
 	)
 	if err != OK:
 		_client_status_refresh_in_flight = false
+		_client_status_refresh_timed_out = false
 		_client_status_refresh_thread = null
+		_refresh_clients_summary()
 		return false
 	return true
 
 
-func _run_client_status_refresh_worker(client_ids: Array[String], server_url: String) -> void:
+func _run_client_status_refresh_worker(client_probes: Array[Dictionary], server_url: String, generation: int) -> void:
 	var results: Dictionary = {}
-	for client_id in client_ids:
-		var status := McpClientConfigurator.check_status_for_url(client_id, server_url)
-		var installed := false
-		if status == McpClient.Status.NOT_CONFIGURED:
-			installed = McpClientConfigurator.is_installed(client_id)
+	for probe in client_probes:
+		var client_id := String(probe.get("id", ""))
+		if client_id.is_empty():
+			continue
+		var status := McpClientConfigurator.check_status_for_url_with_cli_path(
+			client_id,
+			server_url,
+			String(probe.get("cli_path", ""))
+		)
+		var installed := bool(probe.get("installed", false))
 		results[client_id] = {"status": status, "installed": installed}
-	call_deferred("_apply_client_status_refresh_results", results)
+	if not _client_status_refresh_shutdown_requested:
+		call_deferred("_apply_client_status_refresh_results", results, generation)
 
 
-func _apply_client_status_refresh_results(results: Dictionary) -> void:
+func _apply_client_status_refresh_results(results: Dictionary, generation: int) -> void:
+	if generation != _client_status_refresh_generation or _client_status_refresh_shutdown_requested:
+		return
 	if _client_status_refresh_thread != null:
 		_client_status_refresh_thread.wait_to_finish()
 		_client_status_refresh_thread = null
@@ -1482,9 +1572,10 @@ func _apply_client_status_refresh_results(results: Dictionary) -> void:
 			"",
 			result.get("installed", false)
 		)
-	_refresh_clients_summary()
 	_last_client_status_refresh_completed_msec = Time.get_ticks_msec()
 	_client_status_refresh_in_flight = false
+	_client_status_refresh_timed_out = false
+	_refresh_clients_summary()
 
 	if _client_status_refresh_pending:
 		var pending_force := _client_status_refresh_pending_force
@@ -1540,6 +1631,7 @@ func _apply_row_status(
 	var row: Dictionary = _client_rows.get(client_id, {})
 	if row.is_empty():
 		return
+	row["status"] = status
 	var dot: ColorRect = row["dot"]
 	var configure_btn: Button = row["configure_btn"]
 	var remove_btn: Button = row["remove_btn"]
