@@ -1094,6 +1094,52 @@ func test_remove_from_group_missing_group() -> void:
 	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
 
 
+func test_add_to_group_rejects_array_value() -> void:
+	## Repro for #210: the meta-tool layer JSON-decodes string-shaped values
+	## like `"[\"a\",\"b\"]"` into an Array before the handler sees them.
+	## Without input validation the typed assignment `var group: String =
+	## ...` would runtime-error and the dispatcher would only surface an
+	## opaque INTERNAL_ERROR. With validation, the agent gets an actionable
+	## INVALID_PARAMS instead.
+	var result := _handler.add_to_group({
+		"path": "/Main/Camera3D",
+		"group": ["a", "b"],
+	})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+	assert_contains(result.error.message, "group")
+	assert_contains(result.error.message, "Array")
+
+
+func test_remove_from_group_rejects_array_value() -> void:
+	var result := _handler.remove_from_group({
+		"path": "/Main/Camera3D",
+		"group": ["a", "b"],
+	})
+	assert_is_error(result, McpErrorCodes.INVALID_PARAMS)
+	assert_contains(result.error.message, "group")
+	assert_contains(result.error.message, "Array")
+
+
+func test_add_to_group_accepts_string_name_value() -> void:
+	## JSON only carries TYPE_STRING, but internal callers may pass a
+	## StringName. The validator accepts both; the handler converts via
+	## String() before the typed local so the assignment can't trip a
+	## StringName→String type-mismatch at runtime.
+	var scene_root := EditorInterface.get_edited_scene_root()
+	var cam := ScenePath.resolve("/Main/Camera3D", scene_root)
+	if cam and cam.is_in_group("_mcp_test_sn_group"):
+		cam.remove_from_group("_mcp_test_sn_group")
+
+	var result := _handler.add_to_group({
+		"path": "/Main/Camera3D",
+		"group": &"_mcp_test_sn_group",
+	})
+	assert_has_key(result, "data")
+	assert_eq(result.data.group, "_mcp_test_sn_group")
+	assert_true(result.data.undoable)
+	_undo_redo.undo()
+
+
 # ----- set_selection -----
 
 func test_set_selection_basic() -> void:
