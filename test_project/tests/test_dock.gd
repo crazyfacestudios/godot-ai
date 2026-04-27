@@ -157,6 +157,13 @@ func test_refresh_cooldown_helper_only_blocks_automatic_refreshes() -> void:
 		"No completed refresh means no cooldown")
 
 
+func test_initial_refresh_delay_is_past_typical_hot_reload_settle() -> void:
+	## Regression for #233 — locks the settle margin so a "0-delay would be
+	## snappier" refactor can't silently re-introduce the self-update crash.
+	assert_true(McpDockScript.CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC >= 1000,
+		"Initial refresh delay must be at least 1s — empirical hot-reload settle")
+
+
 func test_exit_tree_drains_orphaned_refresh_threads() -> void:
 	## Regression for the static-var orphan bug surfaced on the plugin disable
 	## path (editor_reload_plugin, Project Settings toggle): the McpDock

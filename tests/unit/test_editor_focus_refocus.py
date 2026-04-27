@@ -51,12 +51,27 @@ def test_clients_window_open_requests_nonblocking_refresh() -> None:
 
 
 def test_initial_paint_requests_async_status_refresh() -> None:
-    """Cold editor open should still populate client dots without waiting for focus-in."""
+    """Cold editor open populates client dots via the deferred helper (#233).
+
+    Asserts the call chain end-to-end so a future refactor can't accidentally
+    drop the auto-spawn or remove the hot-reload settle delay.
+    """
 
     source = (PLUGIN_ROOT / "mcp_dock.gd").read_text()
     build_block = source.split("func _build_ui() -> void:", 1)[1].split("\n\nfunc ", 1)[0]
+    assert "_schedule_initial_client_status_refresh()" in build_block, (
+        "_build_ui must schedule the initial refresh"
+    )
 
-    assert "_request_client_status_refresh.call_deferred(true)" in build_block
+    helper_block = source.split(
+        "func _schedule_initial_client_status_refresh() -> void:", 1
+    )[1].split("\n\nfunc ", 1)[0]
+    assert "_request_client_status_refresh(true)" in helper_block, (
+        "Helper must ultimately call the force-refresh path"
+    )
+    assert "CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC" in helper_block, (
+        "Helper must defer past hot-reload settle window"
+    )
 
 
 def test_worker_uses_main_thread_probe_snapshot_for_cli_paths() -> None:
