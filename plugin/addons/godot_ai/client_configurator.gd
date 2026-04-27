@@ -161,6 +161,36 @@ static func check_status(id: String) -> McpClient.Status:
 	return _dispatch_check_status(client, http_url())
 
 
+static func check_status_for_url(id: String, url: String) -> McpClient.Status:
+	var client := McpClientRegistry.get_by_id(id)
+	if client == null:
+		return McpClient.Status.NOT_CONFIGURED
+	return _dispatch_check_status(client, url)
+
+
+static func check_status_for_url_with_cli_path(id: String, url: String, cli_path: String) -> McpClient.Status:
+	var client := McpClientRegistry.get_by_id(id)
+	if client == null:
+		return McpClient.Status.NOT_CONFIGURED
+	if client.config_type == "cli" and cli_path.is_empty():
+		return McpClient.Status.NOT_CONFIGURED
+	return _dispatch_check_status_with_cli_path(client, url, cli_path)
+
+
+static func client_status_probe_snapshot(id: String) -> Dictionary:
+	var client := McpClientRegistry.get_by_id(id)
+	if client == null:
+		return {}
+	var cli_path := ""
+	var installed := false
+	if client.config_type == "cli":
+		cli_path = McpCliStrategy.resolve_cli_path(client)
+		installed = not cli_path.is_empty()
+	else:
+		installed = client.is_installed()
+	return {"id": id, "cli_path": cli_path, "installed": installed}
+
+
 static func remove(id: String) -> Dictionary:
 	var client := McpClientRegistry.get_by_id(id)
 	if client == null:
@@ -195,13 +225,19 @@ static func _dispatch_remove(client: McpClient) -> Dictionary:
 
 
 static func _dispatch_check_status(client: McpClient, url: String) -> McpClient.Status:
+	return _dispatch_check_status_with_cli_path(client, url, "")
+
+
+static func _dispatch_check_status_with_cli_path(client: McpClient, url: String, cli_path: String) -> McpClient.Status:
 	match client.config_type:
 		"json":
 			return McpJsonStrategy.check_status(client, SERVER_NAME, url)
 		"toml":
 			return McpTomlStrategy.check_status(client, SERVER_NAME, url)
 		"cli":
-			return McpCliStrategy.check_status(client, SERVER_NAME, url)
+			if cli_path.is_empty():
+				return McpCliStrategy.check_status(client, SERVER_NAME, url)
+			return McpCliStrategy.check_status_with_cli_path(client, SERVER_NAME, url, cli_path)
 	return McpClient.Status.NOT_CONFIGURED
 
 

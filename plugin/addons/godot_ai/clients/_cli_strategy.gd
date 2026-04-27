@@ -28,7 +28,10 @@ static func configure(client: McpClient, server_name: String, server_url: String
 
 
 static func check_status(client: McpClient, server_name: String, server_url: String) -> McpClient.Status:
-	var cli := _resolve_cli(client)
+	return check_status_with_cli_path(client, server_name, server_url, _resolve_cli(client))
+
+
+static func check_status_with_cli_path(client: McpClient, server_name: String, server_url: String, cli: String) -> McpClient.Status:
 	if cli.is_empty():
 		return McpClient.Status.NOT_CONFIGURED
 	if not client.cli_status_check.is_valid():
@@ -53,3 +56,7 @@ static func remove(client: McpClient, server_name: String) -> Dictionary:
 
 static func _resolve_cli(client: McpClient) -> String:
 	return McpCliFinder.find(McpClient._array_from_packed(client.cli_names))
+
+
+static func resolve_cli_path(client: McpClient) -> String:
+	return _resolve_cli(client)
