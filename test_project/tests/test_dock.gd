@@ -157,11 +157,25 @@ func test_refresh_cooldown_helper_only_blocks_automatic_refreshes() -> void:
 		"No completed refresh means no cooldown")
 
 
-func test_initial_refresh_delay_is_past_typical_hot_reload_settle() -> void:
-	## Regression for #233 — locks the settle margin so a "0-delay would be
-	## snappier" refactor can't silently re-introduce the self-update crash.
-	assert_true(McpDockScript.CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC >= 1000,
-		"Initial refresh delay must be at least 1s — empirical hot-reload settle")
+func test_initial_refresh_helper_replaces_settle_timer_constant() -> void:
+	## #234 shipped a `CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC` heuristic that
+	## #235 replaces with a deterministic sync gate. The constant must be gone
+	## — keeping it alongside the sync helper would falsely imply a residual
+	## timer-based fix.
+	##
+	## The full structural guard ("the helper has no Thread/await/timer") lives
+	## in `tests/unit/test_editor_focus_refocus.py` because GDScript can't
+	## introspect its own AST. This GDScript-side test is the script-class
+	## guard for the constant itself: if a future merge adds it back (e.g.
+	## resurrecting #234's stopgap on top of #235), `get_script_constant_map`
+	## will catch it on the next test run.
+	var script: GDScript = McpDockScript
+	var has_constant := false
+	for entry in script.get_script_constant_map():
+		if String(entry) == "CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC":
+			has_constant = true
+			break
+	assert_false(has_constant, "CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC must be removed — #235 replaces #234's timer with a deterministic gate")
 
 
 func test_exit_tree_drains_orphaned_refresh_threads() -> void:
@@ -181,6 +195,37 @@ func test_exit_tree_drains_orphaned_refresh_threads() -> void:
 	_dock._exit_tree()
 	assert_true(McpDockScript._orphaned_client_status_refresh_threads.is_empty(),
 		"_exit_tree must clear the orphan list synchronously after waiting on each thread")
+
+
+func test_self_update_in_progress_blocks_request_refresh() -> void:
+	## Race B regression: while `_install_update` is overwriting plugin scripts
+	## on disk, every refresh-spawn path (focus-in, manual button, cooldown
+	## timer, deferred initial refresh) must short-circuit. Spawning a worker
+	## that walks into a half-overwritten script crashes inside
+	## `GDScriptFunction::call` (confirmed by SIGABRT in
+	## `VBoxContainer(McpDock)::_run_client_status_refresh_worker`).
+	##
+	## `_request_client_status_refresh` is the funnel for every spawn path,
+	## so gating here covers focus-in (`_notification` → handler) without
+	## needing a separate gate at each call site.
+	_dock._self_update_in_progress = true
+	var ok: bool = _dock._request_client_status_refresh(false)
+	assert_false(ok, "Refresh must not spawn a worker while self-update is in progress")
+	assert_eq(_dock._client_status_refresh_thread, null, "No worker thread should have been started while self-update is in progress")
+	assert_false(_dock._client_status_refresh_in_flight, "In-flight flag should not flip on while self-update is in progress")
+	_dock._self_update_in_progress = false
+
+
+func test_drain_helper_does_not_poison_shutdown_flag() -> void:
+	## `_install_update` calls `_drain_client_status_refresh_workers` to clear
+	## any in-flight refresh worker before extracting plugin scripts. The
+	## install can fail (e.g. zip open error) — when it does, the dock stays
+	## alive and refreshes must resume on the OLD instance. So unlike
+	## `_exit_tree`'s drain, the install-time drain must NOT set
+	## `_client_status_refresh_shutdown_requested` (which is one-way and
+	## permanently disables refreshes for the dock instance).
+	_dock._drain_client_status_refresh_workers()
+	assert_false(_dock._client_status_refresh_shutdown_requested, "drain must not set shutdown_requested — only _exit_tree does")
 
 
 ## Shared fixture for the three version-label tests. Inject a Label + Button

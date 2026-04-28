@@ -12,11 +12,6 @@ const MODE_OVERRIDE_VALUES := ["", "user", "dev"]
 const MODE_OVERRIDE_LABELS := ["Auto", "Force user", "Force dev"]
 const CLIENT_STATUS_REFRESH_COOLDOWN_MSEC := 15 * 1000
 const CLIENT_STATUS_REFRESH_TIMEOUT_MSEC := 30 * 1000
-## Delay before the very first auto-refresh fires after `_build_ui` —
-## settle margin past Godot's lazy GDScript hot-reload of plugin scripts
-## on the self-update path. Empirical settle is <500ms; 1500 is 3× margin.
-## See issue #233.
-const CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC := 1500
 static var COLOR_MUTED := Color(0.7, 0.7, 0.7)
 static var COLOR_HEADER := Color(0.95, 0.95, 0.95)
 ## Used for "in-progress" / "stale, action needed" UI: the startup-grace
@@ -100,6 +95,12 @@ var _client_status_refresh_started_msec: int = 0
 var _client_status_refresh_generation: int = 0
 var _client_status_refresh_shutdown_requested := false
 var _client_status_refresh_timed_out := false
+## Set for the duration of `_install_update` — extract-overwrite of plugin
+## scripts on disk would crash any worker mid-`GDScriptFunction::call`
+## (confirmed via SIGABRT in `VBoxContainer(McpDock)::_run_client_status_refresh_worker`).
+## Gates every spawn path (focus-in, manual button, deferred initial refresh)
+## while `true`; the in-flight worker is drained at start of install.
+var _self_update_in_progress := false
 static var _orphaned_client_status_refresh_threads: Array[Thread] = []
 
 # Dev-mode only
@@ -193,6 +194,15 @@ func _exit_tree() -> void:
 	## GC-mid-execution crash this fix exists to prevent. Blocking the editor
 	## briefly on plugin-reload is strictly better than the SIGSEGV.
 	_client_status_refresh_shutdown_requested = true
+	_drain_client_status_refresh_workers()
+
+
+func _drain_client_status_refresh_workers() -> void:
+	## Block until any in-flight refresh worker (and any orphaned workers from
+	## a prior timeout) finish, then clear refresh state. Same blocking
+	## semantics as the `_exit_tree` drain — see #232. Used by `_exit_tree`
+	## (dock teardown) and `_install_update` (before extract overwrites
+	## plugin scripts on disk).
 	_client_status_refresh_generation += 1
 	if _client_status_refresh_thread != null:
 		_client_status_refresh_thread.wait_to_finish()
@@ -552,7 +562,7 @@ func _build_ui() -> void:
 	# Apply initial dev-mode visibility
 	_apply_dev_mode_visibility()
 	_refresh_setup_status.call_deferred()
-	_schedule_initial_client_status_refresh()
+	_perform_initial_client_status_refresh()
 
 
 func _make_header(text: String) -> Label:
@@ -1519,32 +1529,113 @@ func _prune_orphaned_client_status_refresh_threads() -> void:
 			_orphaned_client_status_refresh_threads.remove_at(i)
 
 
-func _schedule_initial_client_status_refresh() -> void:
-	## Defer the first auto-refresh past Godot's lazy GDScript hot-reload
-	## window — racing it segfaults the editor on the self-update path.
-	## Filesystem signals don't bracket the race (they fire before bytecode
-	## swap completes) and FOCUS_IN doesn't fire on in-place plugin reload,
-	## so a fixed-delay timer is the only mechanism that works. See #233.
-	## (Tracked in #235; this is the interim heuristic stopgap.)
-	## Pre-await `get_tree()` capture: GDScript tests instantiate the dock
-	## via `McpDockScript.new()` without adding to the tree, so `get_tree()`
-	## is null and `null.create_timer(...)` would error. Bail cleanly when
-	## not in tree — the deferred refresh is a no-op outside the editor.
-	var tree := get_tree()
-	if tree == null or not is_inside_tree():
-		return
-	await tree.create_timer(CLIENT_STATUS_REFRESH_INITIAL_DELAY_MSEC / 1000.0).timeout
-	if _client_status_refresh_shutdown_requested:
-		return
+func _perform_initial_client_status_refresh() -> void:
+	## Pre-warm strategy bytecode on main, defer CLI probes to the worker.
+	##
+	## Godot's GDScript hot-reload of overwritten plugin files is lazy: the
+	## bytecode swap happens on first dereference, not at `set_plugin_enabled`
+	## time. A worker thread spawned from a fresh `_build_ui` walks into
+	## `_json_strategy.*` / `_cli_strategy.*` / `client_configurator.*` while
+	## bytecode pages are mid-swap → SIGABRT. Dereferencing those scripts on
+	## main first forces the swap to complete here; the worker then finds
+	## stable bytecode. Filesystem signals don't bracket the swap window
+	## (they fire before bytecode replacement), and FOCUS_IN doesn't fire on
+	## in-place plugin reload because the editor stays focused — so neither
+	## works as a gate. See #233 / #235.
+	##
+	## Phase 1 (sync, on main): for each client, snapshot warms the CLI call
+	## graph via `resolve_cli_path`; for non-CLI clients, sync `check_status`
+	## warms `_json_strategy.gd` / `_toml_strategy.gd`. Phase 2 (worker): CLI
+	## probes only, race-safe because Phase 1 dereferenced their call graph.
+	##
+	## No-op outside the tree — GDScript tests instantiate via `new()`.
 	if not is_inside_tree():
 		return
-	_request_client_status_refresh(true)
+	if _client_rows.is_empty():
+		return
+	if _client_status_refresh_shutdown_requested:
+		return
+	if _self_update_in_progress:
+		return
+	if _client_status_refresh_in_flight:
+		return
+
+	var generation := _begin_client_status_refresh_run()
+	var server_url := McpClientConfigurator.http_url()
+	var deferred_cli_probes: Array[Dictionary] = []
+
+	for client_id in _client_rows:
+		var client := McpClientRegistry.get_by_id(String(client_id))
+		if client == null:
+			continue
+		var probe := McpClientConfigurator.client_status_probe_snapshot(String(client_id))
+		if probe.is_empty():
+			continue
+		if client.config_type == "cli":
+			deferred_cli_probes.append(probe)
+			continue
+		var status := McpClientConfigurator.check_status_for_url_with_cli_path(
+			String(client_id), server_url, ""
+		)
+		_apply_row_status(
+			String(client_id), status, "", bool(probe.get("installed", false))
+		)
+	_refresh_clients_summary()
+
+	if deferred_cli_probes.is_empty():
+		_finalize_completed_refresh()
+		return
+
+	_client_status_refresh_thread = Thread.new()
+	var err := _client_status_refresh_thread.start(
+		Callable(self, "_run_client_status_refresh_worker").bind(
+			deferred_cli_probes, server_url, generation
+		)
+	)
+	if err != OK:
+		_client_status_refresh_in_flight = false
+		_client_status_refresh_timed_out = false
+		_client_status_refresh_thread = null
+		_refresh_clients_summary()
+
+
+func _begin_client_status_refresh_run() -> int:
+	## Marks a refresh as starting and returns the new generation token.
+	## Generation is bumped here (not at completion) so that a worker callback
+	## arriving after `_abandon_client_status_refresh_thread` or `_exit_tree`
+	## fires can be detected as stale via generation mismatch.
+	_client_status_refresh_in_flight = true
+	_client_status_refresh_pending = false
+	_client_status_refresh_pending_force = false
+	_client_status_refresh_timed_out = false
+	_client_status_refresh_started_msec = Time.get_ticks_msec()
+	_client_status_refresh_generation += 1
+	_refresh_clients_summary()
+	return _client_status_refresh_generation
+
+
+func _finalize_completed_refresh() -> void:
+	## Stamps cooldown and clears in-flight state. Called at the end of every
+	## refresh that successfully applied results — the worker callback path
+	## and the no-CLI fast path in `_perform_initial_client_status_refresh`.
+	_last_client_status_refresh_completed_msec = Time.get_ticks_msec()
+	_client_status_refresh_in_flight = false
+	_client_status_refresh_timed_out = false
+	_refresh_clients_summary()
 
 
 func _request_client_status_refresh(force: bool = false) -> bool:
 	## Stale-while-refreshing: do not clear dots, summary, or the drift banner
 	## when a refresh is requested. The existing UI remains visible until the
 	## background worker's result is applied on the main thread.
+	if _self_update_in_progress:
+		## Self-update is overwriting plugin scripts on disk; spawning a worker
+		## now would crash it inside `GDScriptFunction::call` once the bytecode
+		## swap reaches a script the worker is mid-call into. Focus-in /
+		## manual button / cooldown timer all funnel through here, so one
+		## gate covers every spawn path during the install window. The flag
+		## dies with the dock instance during `set_plugin_enabled(false)`.
+		return false
 	if _client_status_refresh_in_flight:
 		if force and _has_client_status_refresh_timed_out():
 			_abandon_client_status_refresh_thread()
@@ -1565,14 +1656,7 @@ func _request_client_status_refresh(force: bool = false) -> bool:
 		client_probes.append(McpClientConfigurator.client_status_probe_snapshot(String(client_id)))
 	var server_url := McpClientConfigurator.http_url()
 
-	_client_status_refresh_in_flight = true
-	_client_status_refresh_pending = false
-	_client_status_refresh_pending_force = false
-	_client_status_refresh_timed_out = false
-	_client_status_refresh_started_msec = Time.get_ticks_msec()
-	_client_status_refresh_generation += 1
-	var generation := _client_status_refresh_generation
-	_refresh_clients_summary()
+	var generation := _begin_client_status_refresh_run()
 	_client_status_refresh_thread = Thread.new()
 	var err := _client_status_refresh_thread.start(
 		Callable(self, "_run_client_status_refresh_worker").bind(client_probes, server_url, generation)
@@ -1618,10 +1702,7 @@ func _apply_client_status_refresh_results(results: Dictionary, generation: int) 
 			"",
 			result.get("installed", false)
 		)
-	_last_client_status_refresh_completed_msec = Time.get_ticks_msec()
-	_client_status_refresh_in_flight = false
-	_client_status_refresh_timed_out = false
-	_refresh_clients_summary()
+	_finalize_completed_refresh()
 
 	if _client_status_refresh_pending:
 		var pending_force := _client_status_refresh_pending_force
@@ -1818,11 +1899,22 @@ func _install_update() -> void:
 		_update_banner.visible = false
 		return
 
+	## Block worker spawning + drain in-flight worker BEFORE we start
+	## overwriting plugin scripts on disk. Without this, focus-in landing
+	## anywhere in the extract→reload window spawns a worker that walks
+	## into a partially-overwritten script and SIGABRTs inside
+	## `GDScriptFunction::call`. The flag is also checked by
+	## `_request_client_status_refresh` and `_perform_initial_client_status_refresh`,
+	## so every spawn path is gated.
+	_self_update_in_progress = true
+	_drain_client_status_refresh_workers()
+
 	var zip_path := ProjectSettings.globalize_path(UPDATE_TEMP_ZIP)
 	var install_base := ProjectSettings.globalize_path("res://")
 
 	var reader := ZIPReader.new()
 	if reader.open(zip_path) != OK:
+		_self_update_in_progress = false
 		_update_btn.text = "Extract failed"
 		_update_btn.disabled = false
 		return
@@ -1883,6 +1975,10 @@ func _install_update() -> void:
 			## the pre-#127 behaviour).
 			_reload_after_update.call_deferred()
 	else:
+		## Pre-4.4 Godot: no plugin reload, dock stays alive on the new files.
+		## Clear the install flag so refreshes resume on the OLD dock instance
+		## until the user restarts the editor.
+		_self_update_in_progress = false
 		_update_btn.text = "Restart editor to apply"
 		_update_btn.disabled = true
 		_update_label.text = "Updated! Restart the editor."
