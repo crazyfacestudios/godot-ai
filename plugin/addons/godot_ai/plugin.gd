@@ -121,6 +121,7 @@ var _server_dev_version_mismatch_allowed := false
 var _connection_blocked := false
 var _awaiting_server_version := false
 var _server_version_deadline_ms: int = 0
+var _headless_disabled := false
 
 
 func _enter_tree() -> void:
@@ -128,6 +129,11 @@ func _enter_tree() -> void:
 	## it off until `_watch_for_adoption_confirmation` arms it, so the
 	## plugin has zero per-frame cost in the common case.
 	set_process(false)
+
+	if _mcp_disabled_for_headless_launch():
+		_headless_disabled = true
+		print("MCP | plugin disabled in headless mode")
+		return
 
 	## Register port overrides before spawn so `http_port()` / `ws_port()`
 	## return the user's configured values (if any) when `_start_server`
@@ -320,6 +326,11 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	if _headless_disabled:
+		_server_started_this_session = false
+		_headless_disabled = false
+		return
+
 	## Outer-to-inner teardown. Dispatcher Callables hold RefCounted handlers
 	## alive past the point where Godot reloads their class_name scripts — the
 	## first post-reload call into a typed-array-holding handler (e.g.
@@ -407,7 +418,43 @@ func _detach_editor_logger() -> void:
 ## framebuffer captures over EngineDebugger messages. Removed on
 ## _disable_plugin so disabling the plugin leaves project.godot clean.
 func _enable_plugin() -> void:
+	if _mcp_disabled_for_headless_launch():
+		return
 	_ensure_game_helper_autoload()
+
+
+static func _mcp_disabled_for_headless_launch() -> bool:
+	return _mcp_disabled_for_headless(
+		OS.get_cmdline_args(),
+		DisplayServer.get_name(),
+		OS.get_environment("GODOT_AI_ALLOW_HEADLESS")
+	)
+
+
+static func _mcp_disabled_for_headless(args: PackedStringArray, display_name: String, allow_value: String) -> bool:
+	if _env_truthy(allow_value):
+		return false
+	return _args_request_headless(args) or display_name.to_lower() == "headless"
+
+
+static func _args_request_headless(args: PackedStringArray) -> bool:
+	for i in range(args.size()):
+		var arg := args[i]
+		if arg == "--headless":
+			return true
+		if arg == "--display-driver" and i + 1 < args.size() and args[i + 1] == "headless":
+			return true
+		if arg.begins_with("--display-driver=") and arg.get_slice("=", 1) == "headless":
+			return true
+	return false
+
+
+static func _env_truthy(value: String) -> bool:
+	match value.strip_edges().to_lower():
+		"1", "true", "yes", "on":
+			return true
+		_:
+			return false
 
 
 func _disable_plugin() -> void:
