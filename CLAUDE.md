@@ -53,7 +53,7 @@ Before editing *anything* in `plugin/` in a worktree, the worktree must pass two
 
 `script/verify-worktree` (bash, works in git-bash on Windows) checks both. If the link is missing or broken it creates/repairs it via `ln -s` or `mklink /J` — no admin rights, no Windows Developer Mode required. It runs automatically via a `post-checkout` hook on every `git worktree add` and `git checkout <branch>`, so a freshly-created worktree is healthy by the time you start editing.
 
-Wiring: `script/setup-dev` and `setup-dev.ps1` copy `.githooks/post-checkout` into `.git/hooks/post-checkout` (the default path git always looks at). `.git/hooks/` is shared across all worktrees of a clone, so one install covers every future worktree forever. A fresh clone on a new machine needs setup-dev run once before the hook is active — after that, it's automatic. (We don't use `core.hooksPath=.githooks` because git resolves that relative path against main's working tree, which may be on a branch without `.githooks/` — a trap that wasted a whole debugging cycle.)
+Wiring: `script/setup-dev` and `setup-dev.ps1` copy `script/githooks/post-checkout` into `.git/hooks/post-checkout` (the default path git always looks at). `.git/hooks/` is shared across all worktrees of a clone, so one install covers every future worktree forever. A fresh clone on a new machine needs setup-dev run once before the hook is active — after that, it's automatic. (We don't use `core.hooksPath=script/githooks` because git resolves that relative path against main's working tree, which may be on a branch without `script/githooks/` — a trap that wasted a whole debugging cycle.)
 
 **If you find a broken worktree** (empty `plugin/`, or the link missing/stale): do NOT `git add` anything. Run `script/verify-worktree` to heal, or re-create the worktree. Committing plugin/ edits from a broken worktree stages phantom deletions that overwrite the canonical plugin code in main on push.
 
@@ -65,7 +65,7 @@ Wiring: `script/setup-dev` and `setup-dev.ps1` copy `.githooks/post-checkout` in
 
 ```bash
 # SAFE — root repo, never auto-cleaned:
-/Applications/Godot_mono.app/Contents/MacOS/Godot --editor --path /Users/davidsarno/Documents/godot-ai/test_project/
+/Applications/Godot_mono.app/Contents/MacOS/Godot --editor --path /Users/davidsarno/godot-ai/test_project/
 
 # DANGEROUS — worktree, can vanish:
 /Applications/Godot_mono.app/Contents/MacOS/Godot --editor --path .claude/worktrees/some-name/test_project/
@@ -98,7 +98,7 @@ Sometimes you're directed at another session's PR worktree (e.g. to fix a bug th
 ## Dev workflow
 
 ```bash
-cd ~/Documents/godot-ai
+cd ~/godot-ai
 script/setup-dev             # creates .venv, installs deps, applies macOS .pth fix
 source .venv/bin/activate
 pytest -v                    # run tests
@@ -182,7 +182,7 @@ The harness creates a disposable project with a physical addon copy, stages a sy
 
 ### Python tests
 ```bash
-pytest -v                    # 388 unit + integration tests
+pytest -v                    # 686 unit + integration tests
 ```
 
 ### Godot-side tests
